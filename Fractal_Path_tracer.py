@@ -32,7 +32,122 @@ class fractal_Path_tracer(mglw.WindowConfig):
     window_size = (Width , Height)
     aspect_ratio = None
     resizable = True
+    
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        self.frame = 0
+        self.iCam_pos = [0.1, 0.1, -5.0]
+        self.iCam_yp = [0.0, 0.0]
+        self.iMode = 0
+        self.iCam_a = 0.01
+        self.cam_speed = 2
+        #Studio/Sky, Light Size, rotation, elevation, power, contrast
+        self.World_settings = [0.0,1.0,120.0,30.0,1.0,1.0]
+        #bounces, ni, normal quality
+        self.Render_settings = [5,512,0.001,90,0.0005,0.25]
+        #gamma, exposure, brightness, saturation, contrast, chro, highlights
+        self.Post_settings = [0.0,1.0,0.0,1.0,1.0,0.0,0.0]
+        self.SET = [0.0 ,0.0 ,0.0 ,0.0 ,0.0 ,0.0 ,0.0 ,0.0]
+
+        self.prev_keys = set()
+        self.keys_down = set()
+
+        self._fps_time_accum = 0.0
+        self._fps_frame_accum = 0
+        self._last_fps = 0.0
+
+        self.sin_p = math.sin(self.iCam_yp[1])
+        self.cos_p = math.cos(self.iCam_yp[1])
+        self.sin_y = math.sin(self.iCam_yp[0])
+        self.cos_y = math.cos(self.iCam_yp[0])
+
+
+        self.ui_render_width, self.ui_render_height = self.wnd.size
+        self.pending_resize = None
+        self.pending_window_resize = None
+        self.hdri_tex = None
+        self.pending_hdri = None
+        self.request_recompile = False
+        self.request_save_render = False
+
+        self.default_ui_scale = 0.3
+
+        dpg.create_context()
+        self.load_fonts()
+        self.setup_ui()
+
+        post_code = resource_path("PostProcess.glsl").read_text()
+        self.vertex_shader_source = """
+        #version 430 core
+        in vec2 in_position;
+        void main() {
+            gl_Position = vec4(in_position, 0.0, 1.0);
+        }
+        """
+
+        fragment_shader = self.build_fragment_shader(
+            dpg.get_value(self.user_helper_editor),
+            dpg.get_value(self.user_sdf_editor),
+        )
+
+        post_fragment_shader = f"""
+        #version 430 core
+        out vec4 fragColor;
         
+        uniform sampler2D uAccum;
+        uniform vec3 iResolution;
+        uniform float Post_settings[7];
+        
+        {post_code}
+        
+        void main()
+        {{
+            postProcess(fragColor, gl_FragCoord.xy);
+        }}
+        """
+
+
+
+
+        self.program = self.ctx.program(
+            vertex_shader=self.vertex_shader_source,
+            fragment_shader=fragment_shader,
+        )
+        if "HDRI" in self.program:
+            self.program["HDRI"].value = 1
+
+        self.post_program = self.ctx.program(
+            vertex_shader=self.vertex_shader_source,
+            fragment_shader=post_fragment_shader,
+        )
+        # fallback texture so sampler is always valid
+        self.hdri_tex = self.ctx.texture((1, 1), 3, b"\xff\xff\xff")
+        self.hdri_tex.filter = (moderngl.LINEAR, moderngl.LINEAR)
+        self.hdri_tex.use(location=1)
+
+        self.quad = mglw.geometry.quad_2d(size=(2.0, 2.0))
+
+        w = self.wnd.buffer_width
+        h = self.wnd.buffer_height
+
+        self.accum_textures = [
+            self.ctx.texture((w, h), components=4, dtype="f4"),
+            self.ctx.texture((w, h), components=4, dtype="f4"),
+        ]
+
+        for tex in self.accum_textures:
+            tex.filter = (moderngl.NEAREST, moderngl.NEAREST)
+            tex.repeat_x = False
+            tex.repeat_y = False
+        self.fbos = [
+            self.ctx.framebuffer(color_attachments=[self.accum_textures[0]]),
+            self.ctx.framebuffer(color_attachments=[self.accum_textures[1]]),
+        ]
+        self.ping = 0
+        self.pong = 1
+
+
     def save_screenshot(self):
         self.ctx.finish()
         w = self.wnd.buffer_width
@@ -86,6 +201,8 @@ class fractal_Path_tracer(mglw.WindowConfig):
         image.save(filename)
 
 
+    def on_render_button(self, sender):
+        self.request_save_render = True
 
 
     def build_user_sdf_function(self, body: str) -> str:
@@ -276,42 +393,26 @@ class fractal_Path_tracer(mglw.WindowConfig):
 
     def load_fonts(self):
     
-        font_path = resource_path("fonts/ProggyClean.ttf")
+        font_path = resource_path("fonts/JetBrainsMono-Regular.ttf")
     
         with dpg.font_registry():
-            self.fonts = {
-                0: dpg.add_font(str(font_path), 13),
-                1: dpg.add_font(str(font_path), 18),
-                2: dpg.add_font(str(font_path), 24),
-                3: dpg.add_font(str(font_path), 30),
-                4: dpg.add_font(str(font_path), 36),
-            }
-        dpg.bind_font(self.fonts[0])
-
+            self.font = dpg.add_font(str(font_path), 64) 
+    
+        dpg.bind_font(self.font)
+        
     def set_ui_scale(self, sender, app_data):
     
         scale_map = {
-            "70%":  (0, 0.7),
-            "100%": (1, 1.0),
-            "130%": (2, 1.3),
-            "160%": (3, 1.6),
-            "200%": (4, 2.0)
+            "70%": self.default_ui_scale * 0.66,
+            "100%": self.default_ui_scale,
+            "130%": self.default_ui_scale * 1.33,
+            "160%": self.default_ui_scale * 1.66,
+            "200%": self.default_ui_scale * 2.0
         }
     
-        font_index, scale = scale_map[app_data]
+        dpg.set_global_font_scale(scale_map[app_data])
     
-        dpg.bind_item_font("main_ui", self.fonts[font_index])
-    
-        with dpg.theme() as theme:
-            with dpg.theme_component(dpg.mvAll):
-    
-                dpg.add_theme_style(dpg.mvStyleVar_WindowPadding, 8*scale, 8*scale)
-                dpg.add_theme_style(dpg.mvStyleVar_FramePadding, 6*scale, 4*scale)
-                dpg.add_theme_style(dpg.mvStyleVar_ItemSpacing, 8*scale, 6*scale)
-                dpg.add_theme_style(dpg.mvStyleVar_FrameRounding, scale)
-                dpg.add_theme_style(dpg.mvStyleVar_GrabMinSize, 10*scale)
-    
-        dpg.bind_theme(theme)
+
         
         
         
@@ -323,120 +424,6 @@ class fractal_Path_tracer(mglw.WindowConfig):
         elif action == keys.ACTION_RELEASE:
             self.keys_down.discard(key)            
             
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-
-        self.frame = 0
-        self.iCam_pos = [0.1, 0.1, -5.0]
-        self.iCam_yp = [0.0, 0.0]
-        self.iMode = 0
-        self.iCam_a = 0.01
-        self.cam_speed = 2
-        #Studio/Sky, Light Size, rotation, elevation, power, contrast
-        self.World_settings = [0.0,1.0,120.0,30.0,1.0,1.0]
-        #bounces, ni, normal quality
-        self.Render_settings = [5,512,0.001,90,0.0005,0.25]
-        #gamma, exposure, brightness, saturation, contrast, chro, highlights
-        self.Post_settings = [0.0,1.0,0.0,1.0,1.0,0.0,0.0]
-        self.SET = [0.0 ,0.0 ,0.0 ,0.0 ,0.0 ,0.0 ,0.0 ,0.0]
-
-        self.prev_keys = set()
-        self.keys_down = set()
-
-        self._fps_time_accum = 0.0
-        self._fps_frame_accum = 0
-        self._last_fps = 0.0
-
-        self.sin_p = math.sin(self.iCam_yp[1])
-        self.cos_p = math.cos(self.iCam_yp[1])
-        self.sin_y = math.sin(self.iCam_yp[0])
-        self.cos_y = math.cos(self.iCam_yp[0])
-
-
-        self.ui_render_width, self.ui_render_height = self.wnd.size
-        self.pending_resize = None
-        self.pending_window_resize = None
-        self.hdri_tex = None
-        self.pending_hdri = None
-        self.request_recompile = False
-
-
-        dpg.create_context()
-        self.load_fonts()
-        self.setup_ui()
-        
-        post_code = resource_path("PostProcess.glsl").read_text()
-        self.vertex_shader_source = """
-        #version 430 core
-        in vec2 in_position;
-        void main() {
-            gl_Position = vec4(in_position, 0.0, 1.0);
-        }
-        """
-
-        fragment_shader = self.build_fragment_shader(
-            dpg.get_value(self.user_helper_editor),
-            dpg.get_value(self.user_sdf_editor),
-        )
-
-        post_fragment_shader = f"""
-        #version 430 core
-        out vec4 fragColor;
-        
-        uniform sampler2D uAccum;
-        uniform vec3 iResolution;
-        uniform float Post_settings[7];
-        
-        {post_code}
-        
-        void main()
-        {{
-            postProcess(fragColor, gl_FragCoord.xy);
-        }}
-        """
-
-
-
-
-        self.program = self.ctx.program(
-            vertex_shader=self.vertex_shader_source,
-            fragment_shader=fragment_shader,
-        )
-        if "HDRI" in self.program:
-            self.program["HDRI"].value = 1
-            
-        self.post_program = self.ctx.program(
-            vertex_shader=self.vertex_shader_source,
-            fragment_shader=post_fragment_shader,
-        )
-        # fallback texture so sampler is always valid
-        self.hdri_tex = self.ctx.texture((1, 1), 3, b"\xff\xff\xff")
-        self.hdri_tex.filter = (moderngl.LINEAR, moderngl.LINEAR)
-        self.hdri_tex.use(location=1)
-
-        self.quad = mglw.geometry.quad_2d(size=(2.0, 2.0))
-
-        w = self.wnd.buffer_width
-        h = self.wnd.buffer_height
-        
-        self.accum_textures = [
-            self.ctx.texture((w, h), components=4, dtype="f4"),
-            self.ctx.texture((w, h), components=4, dtype="f4"),
-        ]
-        
-        for tex in self.accum_textures:
-            tex.filter = (moderngl.NEAREST, moderngl.NEAREST)
-            tex.repeat_x = False
-            tex.repeat_y = False
-        self.fbos = [
-            self.ctx.framebuffer(color_attachments=[self.accum_textures[0]]),
-            self.ctx.framebuffer(color_attachments=[self.accum_textures[1]]),
-        ]
-        self.ping = 0
-        self.pong = 1
-        
-
 
 
     #UI---------------------------------------------------------------------------------------------------------------UI
@@ -492,23 +479,38 @@ class fractal_Path_tracer(mglw.WindowConfig):
                 no_move=True,
                 no_resize=True
         ):
-            with dpg.group(horizontal=True):
+            with dpg.table(header_row=False, policy=dpg.mvTable_SizingStretchProp):
             
-                dpg.add_button(
-                    label="?",
-                    width=30,
-                    height=30,
-                    callback=lambda: dpg.configure_item("help_popup", show=True)
-                )
+                dpg.add_table_column(width_fixed=True) 
+                dpg.add_table_column(width_fixed=True)  
+                dpg.add_table_column(width_fixed=True)  
+                dpg.add_table_column(width_fixed=True)   
+                dpg.add_table_column()                  
+                dpg.add_table_column(width_fixed=True)  
             
-                dpg.add_spacer(width=10)
-                dpg.add_text("UI scale")
-                dpg.add_combo(
-                    items=["70%", "100%", "130%", "160%", "200%"],
-                    default_value="100%",
-                    width=50,
-                    callback=self.set_ui_scale
-                )
+                with dpg.table_row():
+                    dpg.add_button(
+                        label="?",
+                        callback=lambda: dpg.configure_item("help_popup", show=True)
+                    )
+            
+                    dpg.add_spacer(width=10)
+            
+                    dpg.add_text("UI scale")
+            
+                    dpg.add_combo(
+                        items=["70%", "100%", "130%", "160%", "200%"],
+                        default_value="100%",
+                        width=100,
+                        callback=self.set_ui_scale
+                    )
+            
+                    dpg.add_spacer()
+            
+                    dpg.add_button(
+                        label="Save Render!",
+                        callback=self.on_render_button
+                    )
 
             dpg.add_separator()
             with dpg.collapsing_header(label="SDF Editor", default_open=False):
@@ -600,8 +602,7 @@ class fractal_Path_tracer(mglw.WindowConfig):
                                 max_value=1.0,
                                 default_value=0.0,
                                 callback=self.on_SDF_settings_slider,
-                                user_data=i,
-                                width=280
+                                user_data=i
                             )
 
             dpg.add_separator()
@@ -623,8 +624,7 @@ class fractal_Path_tracer(mglw.WindowConfig):
                     max_value=2.0,
                     default_value=self.World_settings[1],
                     callback=self.on_world_slider,
-                    user_data=1,
-                    width=280
+                    user_data=1
                 )
                 dpg.add_slider_float(
                     label="Rotation",
@@ -632,8 +632,7 @@ class fractal_Path_tracer(mglw.WindowConfig):
                     max_value=360,
                     default_value=self.World_settings[2],
                     callback=self.on_world_slider,
-                    user_data=2,
-                    width=280
+                    user_data=2
                 )
                 dpg.add_slider_float(
                     label="Light Elevation",
@@ -641,22 +640,19 @@ class fractal_Path_tracer(mglw.WindowConfig):
                     max_value=360,
                     default_value=self.World_settings[3],
                     callback=self.on_world_slider,
-                    user_data=3,
-                    width=280
+                    user_data=3
                 )
                 dpg.add_input_float(
                     label="Power",
                     default_value=self.World_settings[4],
                     callback=self.on_world_slider,
-                    user_data=4,
-                    width=280
+                    user_data=4
                 )
                 dpg.add_input_float(
                     label="Contrast",
                     default_value=self.World_settings[5],
                     callback=self.on_world_slider,
                     user_data=5,
-                    width=280,
                     step = 0.01
                 )
 
@@ -672,29 +668,25 @@ class fractal_Path_tracer(mglw.WindowConfig):
                     default_value=self.Render_settings[3],
                     callback=self.on_render_slider,
                     user_data=3,
-                    width=280,
                     step=2.,
                 )
                 dpg.add_input_int(
                     label="Bounces",
                     default_value=int(self.Render_settings[0]),
                     callback=self.on_render_slider,
-                    user_data=0,
-                    width=280
+                    user_data=0
                 )
                 dpg.add_input_int(
                     label="Ray Quality",
                     default_value=int(self.Render_settings[1]),
                     callback=self.on_render_slider,
-                    user_data=1,
-                    width=280
+                    user_data=1
                 )
                 dpg.add_input_float(
                     label="Normal Epsilon",
                     default_value=self.Render_settings[2],
                     callback=self.on_render_slider,
                     user_data=2,
-                    width=280,
                     step=0.00005,
                     format="%.6f"
                 )
@@ -703,7 +695,6 @@ class fractal_Path_tracer(mglw.WindowConfig):
                     default_value=self.Render_settings[4],
                     callback=self.on_render_slider,
                     user_data=4,
-                    width=280,
                     step=0.00005,
                     format="%.6f"
                 )
@@ -713,8 +704,7 @@ class fractal_Path_tracer(mglw.WindowConfig):
                     min_value=0,
                     max_value=1,
                     callback=self.on_render_slider,
-                    user_data=5,
-                    width=280,
+                    user_data=5
                 )
                 dpg.add_separator()
                 dpg.add_text("Render Resolution")
@@ -726,7 +716,7 @@ class fractal_Path_tracer(mglw.WindowConfig):
                     min_value=64,
                     max_value=16384,
                     callback=lambda s, a: setattr(self, "ui_render_width", a),
-                    width=140
+                    width=180
                 )
                 
                 dpg.add_input_int(
@@ -736,7 +726,7 @@ class fractal_Path_tracer(mglw.WindowConfig):
                     min_value=64,
                     max_value=16384,
                     callback=lambda s, a: setattr(self, "ui_render_height", a),
-                    width=140
+                    width=180
                 )
                 
                 dpg.add_button(
@@ -760,8 +750,7 @@ class fractal_Path_tracer(mglw.WindowConfig):
                     max_value=3.0,
                     default_value=self.Post_settings[1],
                     callback=self.on_post_slider,
-                    user_data=1,
-                    width=280
+                    user_data=1
                 )
                 dpg.add_slider_float(
                     label="Brightness",
@@ -769,8 +758,7 @@ class fractal_Path_tracer(mglw.WindowConfig):
                     max_value=1.0,
                     default_value=self.Post_settings[2],
                     callback=self.on_post_slider,
-                    user_data=2,
-                    width=280
+                    user_data=2
                 )
                 dpg.add_slider_float(
                     label="Saturation",
@@ -778,8 +766,7 @@ class fractal_Path_tracer(mglw.WindowConfig):
                     max_value=2.0,
                     default_value=self.Post_settings[3],
                     callback=self.on_post_slider,
-                    user_data=3,
-                    width=280
+                    user_data=3
                 )
                 dpg.add_slider_float(
                     label="Contrast",
@@ -787,8 +774,7 @@ class fractal_Path_tracer(mglw.WindowConfig):
                     max_value=3.0,
                     default_value=self.Post_settings[4],
                     callback=self.on_post_slider,
-                    user_data=4,
-                    width=280
+                    user_data=4
                 )
                 dpg.add_slider_float(
                     label="Chromatic Aberration",
@@ -796,8 +782,7 @@ class fractal_Path_tracer(mglw.WindowConfig):
                     max_value=1.0,
                     default_value=self.Post_settings[5],
                     callback=self.on_post_slider,
-                    user_data=5,
-                    width=280
+                    user_data=5
                 )
                 dpg.add_slider_float(
                     label="Highlight",
@@ -805,13 +790,13 @@ class fractal_Path_tracer(mglw.WindowConfig):
                     max_value=1.0,
                     default_value=self.Post_settings[6],
                     callback=self.on_post_slider,
-                    user_data=6,
-                    width=280
+                    user_data=6
                 )
 
         dpg.set_primary_window("main_ui", True)
         dpg.create_viewport(title="Controls", width=550,height=800,)
         dpg.setup_dearpygui()
+        dpg.set_global_font_scale(self.default_ui_scale)
         dpg.show_viewport()
 
         #UI---------------------------------------------------------------------------------------------------------------UI
@@ -1067,13 +1052,17 @@ class fractal_Path_tracer(mglw.WindowConfig):
 
         self.wnd.title = (f"FPT | FPS: {self._last_fps:.1f} | Depth of field strength: {self.iCam_a:.3f} |")
 
+        #save render---------------------
         if (
                 keys.S in just_pressed
                 and keys.LEFT_CTRL in self.keys_down
         ):
             self.save_screenshot()
+        if self.request_save_render:
+            self.save_screenshot()
+            self.request_save_render = False
+
 
         dpg.render_dearpygui_frame()
-
 if __name__ == "__main__":
     mglw.run_window_config(fractal_Path_tracer)
