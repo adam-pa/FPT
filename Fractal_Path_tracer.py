@@ -41,11 +41,11 @@ class fractal_Path_tracer(mglw.WindowConfig):
         self.iCam_yp = [0.0, 0.0]
         self.iMode = 0
         self.iCam_a = 0.01
-        self.cam_speed = 2
+        self.cam_speed = 2.0
         #Studio/Sky, Light Size, rotation, elevation, power, contrast
         self.World_settings = [0.0,1.0,120.0,30.0,1.0,1.0]
         #bounces, ni, normal quality
-        self.Render_settings = [5,512,0.001,90,0.0005,0.25]
+        self.Render_settings = [5,512,0.001,90.0,0.0005,0.25]
         #gamma, exposure, brightness, saturation, contrast, chro, highlights
         self.Post_settings = [0.0,1.0,0.0,1.0,1.0,0.0,0.0]
         self.SET = [0.0 ,0.0 ,0.0 ,0.0 ,0.0 ,0.0 ,0.0 ,0.0]
@@ -54,7 +54,7 @@ class fractal_Path_tracer(mglw.WindowConfig):
         self.keys_down = set()
 
         self._fps_time_accum = 0.0
-        self._fps_frame_accum = 0
+        self._fps_frame_accum = 0.0
         self._last_fps = 0.0
 
         self.sin_p = math.sin(self.iCam_yp[1])
@@ -176,8 +176,8 @@ class fractal_Path_tracer(mglw.WindowConfig):
     
             if "iResolution" in self.post_program:
                 self.post_program["iResolution"].value = (float(w), float(h), 1.0)
-    
-            self.post_program["Post_settings"].value = self.Post_settings
+
+            self.post_program["Post_settings"].value = tuple(float(x) for x in self.Post_settings)
     
             self.quad.render(self.post_program)
     
@@ -403,7 +403,7 @@ class fractal_Path_tracer(mglw.WindowConfig):
     def set_ui_scale(self, sender, app_data):
     
         scale_map = {
-            "70%": self.default_ui_scale * 0.66,
+            "70%": self.default_ui_scale * 0.85,
             "100%": self.default_ui_scale,
             "130%": self.default_ui_scale * 1.33,
             "160%": self.default_ui_scale * 1.66,
@@ -976,13 +976,13 @@ class fractal_Path_tracer(mglw.WindowConfig):
             self.program["iCam_a"].value = self.iCam_a
 
         if "World_settings" in self.program:
-            self.program["World_settings"].value = self.World_settings
+            self.program["World_settings"].value = tuple(float(x) for x in self.World_settings)
         if "SET" in self.program:
-            self.program["SET"].value = self.SET
+            self.program["SET"].value = tuple(float(x) for x in self.SET)
         if "Render_settings" in self.program:
-            self.program["Render_settings"].value = self.Render_settings
+            self.program["Render_settings"].value = tuple(float(x) for x in self.Render_settings)
         if "Post_settings" in self.post_program:
-            self.post_program["Post_settings"].value = self.Post_settings
+            self.post_program["Post_settings"].value = tuple(float(x) for x in self.Post_settings)
 
         w = self.wnd.buffer_width
         h = self.wnd.buffer_height
