@@ -45,7 +45,7 @@ class fractal_Path_tracer(mglw.WindowConfig):
         #Studio/Sky, Light Size, rotation, elevation, power, contrast
         self.World_settings = [0.0,1.0,120.0,30.0,1.0,1.0]
         #bounces, ni, normal quality
-        self.Render_settings = [5,512,0.001,90.0,0.0005,0.25]
+        self.Render_settings = [5,512,0.001,90.0,0.0005,1000,0.25]
         #gamma, exposure, brightness, saturation, contrast, chro, highlights
         self.Post_settings = [0.0,1.0,0.0,1.0,1.0,0.0,0.0]
         self.SET = [0.0 ,0.0 ,0.0 ,0.0 ,0.0 ,0.0 ,0.0 ,0.0]
@@ -257,7 +257,7 @@ class fractal_Path_tracer(mglw.WindowConfig):
         
         uniform float World_settings[6];
         uniform float SET[8];
-        uniform float Render_settings[6];
+        uniform float Render_settings[7];
     
         {base_code}
     
@@ -677,7 +677,7 @@ class fractal_Path_tracer(mglw.WindowConfig):
                     user_data=0
                 )
                 dpg.add_input_int(
-                    label="Ray Quality",
+                    label="Marching Steps",
                     default_value=int(self.Render_settings[1]),
                     callback=self.on_render_slider,
                     user_data=1
@@ -698,13 +698,20 @@ class fractal_Path_tracer(mglw.WindowConfig):
                     step=0.00005,
                     format="%.6f"
                 )
-                dpg.add_slider_float(
-                    label="Optimization",
+                dpg.add_input_float(
+                    label="Max Distance",
                     default_value=self.Render_settings[5],
+                    callback=self.on_render_slider,
+                    user_data=5,
+                    step=10.,
+                )
+                dpg.add_slider_float(
+                    label="Adaptive Marching",
+                    default_value=self.Render_settings[6],
                     min_value=0,
                     max_value=1,
                     callback=self.on_render_slider,
-                    user_data=5
+                    user_data=6
                 )
                 dpg.add_separator()
                 dpg.add_text("Render Resolution")

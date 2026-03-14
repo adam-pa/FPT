@@ -55,18 +55,23 @@ float HoskinsRand(vec3 p) {
     return float(n) * (1.0 / 4294967296.0);
 }
 
-vec3 Random_Vector(vec3 n,vec2 xy, float seed){
+vec3 Random_Vector(vec3 normal,vec2 xy, float seed){
+ 
     float h1 = HoskinsRand(vec3(xy, seed * 2.0 + 0.0));
 	float h2 = HoskinsRand(vec3(xy, seed * 2.0 + 1.0));
 
+    vec3 n = normalize(normal);
 
-    float phi = 2.0 * pi * h1;
-    float z = 2.0 * h2 - 1.0;
-    float r = sqrt(1.0 - z*z);
-    vec3 vec = vec3(r*cos(phi), r*sin(phi), z);
-    vec = normalize(vec + n);
+    vec3 uu = normalize(cross(n, vec3(0.0, 1.0, 1.0)));
+    vec3 vv = cross(uu, n);
 
-    return vec;
+    float ra = sqrt(h2);
+    float rx = ra * cos(pi * 2. * h1);
+    float ry = ra * sin(pi * 2. * h1);
+    float rz = sqrt(1.0 - h2);
+    vec3 rr = vec3(rx * uu + ry * vv + rz * n);
+
+    return normalize(rr);
 }
 
 vec3 Random_point(float power, vec2 xy, float seed){
@@ -166,11 +171,13 @@ vec3 Ray(vec3 dr, vec3 rp, int ni){
     
     vec3 cam_pos = rp;
     for (int i = 0; i < ni; i++){
-        float o = Object(rp) * 0.9;
+        float o = Object(rp) * 0.99;
         rp += dr * o;
         float fog_lod = dot(cam_pos - rp, cam_pos - rp);
         float lod = mix(0.1, Render_settings[4], lod_falloff/(fog_lod + lod_falloff));
         if (o < lod) break;
+		if (Render_settings[5] < o) break;
+		
     }
     return rp;
 }
@@ -270,12 +277,12 @@ vec3 Render(vec2 xy, vec3 rp,vec2 cam_yp, float frame){
     for (int i = 0; i < Render_settings[0]; i++){
         rp = Ray(dr, rp, local_ni);
 		//Optimization
-		local_ni = int(float(ni)/(Render_settings[5]*2. + 1.));
+		local_ni = int(float(ni)/(Render_settings[6]*2. + 1.));
 
         Material material = Material_properties(rp);
 
 		//light------------light
-        if (length(rp - cam_pos) > 10000.0){
+        if (length(rp - cam_pos) > Render_settings[5]){
             pixellight += Environment(dr);
             break;
         }
@@ -343,11 +350,9 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord)
             float a = 1.0 / float(iFrame + 1);
             accum = mix(texture(iPrevFrame, suv).rgb, col, a);
         }
-    } else {
-        accum = Viewport(uv, cam_pos, cam_yp);
-    }
+        fragColor = vec4(accum, 1.0);
 
-	//rfagcolor
-    fragColor = vec4(accum, 1.0);
+    }else{fragColor = vec4(Viewport(uv, cam_pos, cam_yp),1.0);}
+     
 }
 

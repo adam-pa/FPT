@@ -17,17 +17,13 @@ vec3 gamma_p3(vec3 lin) {
     return pow(lin, vec3(1.0/2.6));
 }
 
-vec3 RRTAndODTFit(vec3 v) {
-    // ACES approximation (Narkowicz 2015)
-    vec3 a = v * (v + 0.0245786) - 0.000090537;
-    vec3 b = v * (0.983729 * v + 0.4329510) + 0.238081;
-    return a / b;
-}
-vec3 ACESFilmic(vec3 color) {
-    // input: linear HDR
-    color = RRTAndODTFit(color);
-    color = clamp(color, 0.0, 1.0); // optional clamp
-    return color;
+vec3 Aces(vec3 x) {
+  const float a = 2.51;
+  const float b = 0.03;
+  const float c = 2.43;
+  const float d = 0.59;
+  const float e = 0.14;
+  return clamp((x * (a * x + b)) / (x * (c * x + d) + e), 0.0, 1.0);
 }
 
 vec3 Gamma_corect(vec3 color){
@@ -35,7 +31,7 @@ vec3 Gamma_corect(vec3 color){
     if (n==0.){return Gamma_srgb_exact(color);}
     if (n==1.){return Gamma_rec709(color);}
     if (n==2.){return gamma_p3(color);}
-    if (n==3.){return ACESFilmic(color);}
+    if (n==3.){return Aces(color);}
     if (n==4.){return color;} 
 }
 
