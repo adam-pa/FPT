@@ -904,14 +904,6 @@ class fractal_Path_tracer(mglw.WindowConfig):
         if not keys.LEFT_CTRL in self.keys_down:
             speed_yp = self.cam_speed * frame_time * 0.5
             
-            if keys.LEFT_SHIFT in self.keys_down:
-                speed_yp *= 1.125
-    
-            if (keys.SPACE in self.keys_down
-                    and keys.LEFT_SHIFT in self.keys_down):
-                speed_yp *= 1.25
-            
-            
             if keys.LEFT in self.keys_down:
                 self.iCam_yp[0] -= speed_yp
             if keys.RIGHT in self.keys_down:
