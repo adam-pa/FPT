@@ -1,0 +1,24 @@
+Apollonian like fractal
+
+  SDF:
+
+sdf = max(F(p), length(p)-5.);
+float H = length(mod(p.xyz-1.,2.)-1.);
+material.rgb = Hsv2rgb(vec3(H,0.5,0.9));
+material.roughness = 1.0;
+material.specular = 0.0;
+material.ior = 1.5;
+material.specularRoughness = 0.0;
+material.emission = 0.0;
+
+
+  Helper Functions:
+
+float F( vec3 p0 ){
+   vec4 p = vec4(p0, 1.);
+   for(int i = 0; i < 10; i++){
+      p.xyz = mod(p.xyz-1.,2.)-1.;
+      p*=1.7/dot(p.xyz,p.xyz);
+   }
+   return length(p.xz/p.w)*0.25;
+}

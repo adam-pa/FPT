@@ -27,10 +27,10 @@ struct BRDFResult {
 Material defaultMaterial() {
     Material m;
 	m.rgb = vec3(1.0,1.0,1.0);
-    m.roughness = 0.5;
-    m.specular = 0.5;
+    m.roughness = 1.0;
+    m.specular = 0.0;
     m.ior = 1.5;
-    m.specularRoughness = 0.2;
+    m.specularRoughness = 0.0;
     m.emission = 0.0;
     return m;
 }
@@ -192,16 +192,16 @@ float Object(vec3 p){
 
 
 //Ray marching----------------------------------------------------------------------------------------------Ray marching
-vec3 Ray(vec3 dr, vec3 rp, int ni){
+vec3 Ray(vec3 dr, vec3 rp, int ni, float min_dist){
     
     vec3 cam_pos = rp;
     for (int i = 0; i < ni; i++){
         float o = Object(rp) * 0.99;
         rp += dr * o;
         float fog_lod = dot(cam_pos - rp, cam_pos - rp);
-        float lod = mix(0.1, Render_settings[4], lod_falloff/(fog_lod + lod_falloff));
+        float lod = mix(0.1, min_dist, lod_falloff/(fog_lod + lod_falloff));
         if (o < lod) break;
-		if (Render_settings[5] < o) break;
+		if (Render_settings[4] < o) break;
 		
     }
     return rp;
@@ -283,11 +283,11 @@ BRDFResult BRDF(
 
 //light simulation------------------------------------------------------light simulation
 vec3 Render(vec2 xy, vec3 rp,vec2 cam_yp, float frame){
-    float focal_length = 1/tan(Render_settings[3]/2. * pi/180. );
+    float focal_length = 1/tan(Camera_settings[0]/2. * pi/180. );
 
-    float cam_d = length(Ray(Rotate( vec3(iFocus_pos, focal_length), cam_yp), rp, 50) - rp);
+    float cam_d = length(Ray(Rotate(normalize(vec3(iFocus_pos, focal_length)), cam_yp), rp, 50, 0.001) - rp);
 
-    vec3 dr = normalize(vec3(xy, focal_length)) + Random_point(0.0002, xy, frame);
+    vec3 dr = normalize(vec3(xy + Random_point(0.0002, xy, frame).xy, focal_length));
     dr = Rotate(dr, cam_yp);
     vec3 fp = rp + dr * cam_d; 
     rp += Rotate( Random_point( iCam_a, xy, frame ), cam_yp );
@@ -301,14 +301,14 @@ vec3 Render(vec2 xy, vec3 rp,vec2 cam_yp, float frame){
     
     
     for (int i = 0; i < Render_settings[0]; i++){
-        rp = Ray(dr, rp, local_ni);
+        rp = Ray(dr, rp, local_ni, Render_settings[3]);
 		//Optimization
-		local_ni = int(float(ni)/(Render_settings[6]*2. + 1.));
+		local_ni = int(float(ni)/(Render_settings[5]*2. + 1.));
 
         Material material = Material_properties(rp);
 
 		//light------------light
-        if (length(rp - cam_pos) > Render_settings[5]){
+        if (length(rp - cam_pos) > Render_settings[4]){
             pixellight += Environment(dr);
             break;}
 
@@ -326,11 +326,11 @@ vec3 Render(vec2 xy, vec3 rp,vec2 cam_yp, float frame){
 
 //Viewport--------------------------------------------------------------------------Viewport
 vec3 Viewport(vec2 xy, vec3 rp,vec2 cam_yp){
-    float f = 1/tan(Render_settings[3]/2. * pi/180. );
+    float f = 1/tan(Camera_settings[0]/2. * pi/180. );
 
     vec3 dr = Rotate( normalize(vec3(xy, f)), cam_yp );
     vec3 cam_pos = rp;
-    rp = Ray(dr, rp, ni);
+    rp = Ray(dr, rp, ni, Render_settings[3]);
     vec3 n = Normal(rp); 
     vec3 li = normalize(vec3(1.0,0.3,0.0));
 

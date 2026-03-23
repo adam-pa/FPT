@@ -45,7 +45,9 @@ class fractal_Path_tracer(mglw.WindowConfig):
         #Studio/Sky, Light Size, rotation, elevation, power, contrast
         self.World_settings = [0.0,1.0,120.0,30.0,1.0,1.0]
         #bounces, ni, normal quality
-        self.Render_settings = [5,512,0.001,90.0,0.0005,1000,0.25]
+        self.Render_settings = [5,512,0.001,0.0005,1000,0.25]
+        #Fov, 
+        self.Camera_settings = [90.0,0.0]
         #gamma, exposure, brightness, saturation, contrast, chro, highlights
         self.Post_settings = [0.0,1.0,0.0,1.0,1.0,0.0,0.0]
         self.SET = [0.0 ,0.0 ,0.0 ,0.0 ,0.0 ,0.0 ,0.0 ,0.0]
@@ -122,7 +124,6 @@ class fractal_Path_tracer(mglw.WindowConfig):
             vertex_shader=self.vertex_shader_source,
             fragment_shader=post_fragment_shader,
         )
-        # fallback texture so sampler is always valid
         self.hdri_tex = self.ctx.texture((1, 1), 3, b"\xff\xff\xff")
         self.hdri_tex.filter = (moderngl.LINEAR, moderngl.LINEAR)
         self.hdri_tex.use(location=1)
@@ -257,9 +258,10 @@ class fractal_Path_tracer(mglw.WindowConfig):
         uniform sampler2D iPrevFrame;
         uniform sampler2D HDRI;
         
+        uniform float Camera_settings[2];
         uniform float World_settings[6];
         uniform float SET[8];
-        uniform float Render_settings[7];
+        uniform float Render_settings[6];
     
         {base_code}
     
@@ -331,13 +333,17 @@ class fractal_Path_tracer(mglw.WindowConfig):
         elif app_data == "HDRI":
             self.World_settings[0] = 2
     
-        self.frame = 0
+        self.frame = 0 
     def on_world_slider(self, sender, value, user_data):
         self.World_settings[user_data] = float(value)
         self.frame = 0
     def on_render_slider(self, sender, value, user_data):
         self.Render_settings[user_data] = float(value)
         self.frame = 0
+
+    def on_camera_slider(self, sender, value, user_data):
+        self.Camera_settings[user_data] = float(value)
+        self.frame = 0    
         
     def close(self):
         if hasattr(self, "accum_textures"):
@@ -394,9 +400,7 @@ class fractal_Path_tracer(mglw.WindowConfig):
 
 
     def load_fonts(self):
-    
         font_path = resource_path("fonts/JetBrainsMono-Regular.ttf")
-    
         with dpg.font_registry():
             self.font = dpg.add_font(str(font_path), 64) 
     
@@ -438,10 +442,10 @@ class fractal_Path_tracer(mglw.WindowConfig):
     def on_mouse_scroll_event(self, x_offset: float, y_offset: float):
         if y_offset > 0. and not self.iCam_a >= 0.2:
             self.frame = 0
-            self.iCam_a += y_offset / 500.
+            self.iCam_a += y_offset / 1000.
         if y_offset < 0. and not self.iCam_a <= 0.:
             self.frame = 0
-            self.iCam_a += y_offset / 500.
+            self.iCam_a += y_offset / 1000.
         
 
     #UI---------------------------------------------------------------------------------------------------------------UI
@@ -474,7 +478,7 @@ class fractal_Path_tracer(mglw.WindowConfig):
                 " R : Toggle render / preview\n"
                 " Scroll to change the depth of field\n"
                 " Ctrl + S : Save render\n"
-                " Click where you want the focus the camera\n"
+                " Click where you want to focus the camera\n"
                 " Shift : go faster! \n"
                 " Shift + Space : go even faster!! \n"
                 "\n"
@@ -623,6 +627,92 @@ class fractal_Path_tracer(mglw.WindowConfig):
                                 callback=self.on_SDF_settings_slider,
                                 user_data=i
                             )
+                            
+            dpg.add_separator()
+            with dpg.collapsing_header(label="Camera Settings", default_open=False):
+                dpg.add_slider_float(
+                    label="Fov",
+                    min_value=0.0,
+                    max_value=180,
+                    default_value=self.Camera_settings[0],
+                    callback=self.on_camera_slider,
+                    user_data=0,
+                )
+                
+            dpg.add_separator()
+            with dpg.collapsing_header(label="Render Settings", default_open=False):
+
+                dpg.add_input_int(
+                    label="Bounces",
+                    default_value=int(self.Render_settings[0]),
+                    callback=self.on_render_slider,
+                    user_data=0
+                )
+                dpg.add_input_int(
+                    label="Marching Steps",
+                    default_value=int(self.Render_settings[1]),
+                    callback=self.on_render_slider,
+                    user_data=1
+                )
+                dpg.add_input_float(
+                    label="Normal Epsilon",
+                    default_value=self.Render_settings[2],
+                    callback=self.on_render_slider,
+                    user_data=2,
+                    step=0.00005,
+                    format="%.6f"
+                )
+                dpg.add_input_float(
+                    label="Min Distance",
+                    default_value=self.Render_settings[3],
+                    callback=self.on_render_slider,
+                    user_data=3,
+                    step=0.00005,
+                    format="%.6f"
+                )
+                dpg.add_input_float(
+                    label="Max Distance",
+                    default_value=self.Render_settings[4],
+                    callback=self.on_render_slider,
+                    user_data=4,
+                    step=10.,
+                )
+                dpg.add_slider_float(
+                    label="Adaptive Marching",
+                    default_value=self.Render_settings[5],
+                    min_value=0,
+                    max_value=1,
+                    callback=self.on_render_slider,
+                    user_data=5
+                )
+                dpg.add_separator()
+                dpg.add_text("Render Resolution")
+
+                dpg.add_input_int(
+                    label="Width",
+                    tag="render_width_input",
+                    default_value=self.ui_render_width,
+                    min_value=64,
+                    max_value=16384,
+                    callback=lambda s, a: setattr(self, "ui_render_width", a),
+                    width=180
+                )
+
+                dpg.add_input_int(
+                    label="Height",
+                    tag="render_height_input",
+                    default_value=self.ui_render_height,
+                    min_value=64,
+                    max_value=16384,
+                    callback=lambda s, a: setattr(self, "ui_render_height", a),
+                    width=180
+                )
+
+                dpg.add_button(
+                    label="Apply Resolution",
+                    width=280,
+                    callback=lambda: self.apply_render_resolution()
+                )
 
             dpg.add_separator()
             with dpg.collapsing_header(label="World Controls", default_open=False):
@@ -675,92 +765,7 @@ class fractal_Path_tracer(mglw.WindowConfig):
                     step = 0.01
                 )
 
-
-
-                dpg.add_separator()
-            with dpg.collapsing_header(label="Render Settings", default_open=False):
-
-                dpg.add_input_float(
-                    label="Fov",
-                    min_value=0.0,
-                    max_value=180,
-                    default_value=self.Render_settings[3],
-                    callback=self.on_render_slider,
-                    user_data=3,
-                    step=2.,
-                )
-                dpg.add_input_int(
-                    label="Bounces",
-                    default_value=int(self.Render_settings[0]),
-                    callback=self.on_render_slider,
-                    user_data=0
-                )
-                dpg.add_input_int(
-                    label="Marching Steps",
-                    default_value=int(self.Render_settings[1]),
-                    callback=self.on_render_slider,
-                    user_data=1
-                )
-                dpg.add_input_float(
-                    label="Normal Epsilon",
-                    default_value=self.Render_settings[2],
-                    callback=self.on_render_slider,
-                    user_data=2,
-                    step=0.00005,
-                    format="%.6f"
-                )
-                dpg.add_input_float(
-                    label="Min Distance",
-                    default_value=self.Render_settings[4],
-                    callback=self.on_render_slider,
-                    user_data=4,
-                    step=0.00005,
-                    format="%.6f"
-                )
-                dpg.add_input_float(
-                    label="Max Distance",
-                    default_value=self.Render_settings[5],
-                    callback=self.on_render_slider,
-                    user_data=5,
-                    step=10.,
-                )
-                dpg.add_slider_float(
-                    label="Adaptive Marching",
-                    default_value=self.Render_settings[6],
-                    min_value=0,
-                    max_value=1,
-                    callback=self.on_render_slider,
-                    user_data=6
-                )
-                dpg.add_separator()
-                dpg.add_text("Render Resolution")
-                
-                dpg.add_input_int(
-                    label="Width",
-                    tag="render_width_input",
-                    default_value=self.ui_render_width,
-                    min_value=64,
-                    max_value=16384,
-                    callback=lambda s, a: setattr(self, "ui_render_width", a),
-                    width=180
-                )
-                
-                dpg.add_input_int(
-                    label="Height",
-                    tag="render_height_input",
-                    default_value=self.ui_render_height,
-                    min_value=64,
-                    max_value=16384,
-                    callback=lambda s, a: setattr(self, "ui_render_height", a),
-                    width=180
-                )
-                
-                dpg.add_button(
-                    label="Apply Resolution",
-                    width=280,
-                    callback=lambda: self.apply_render_resolution()
-                )                
-                
+ 
             dpg.add_separator()
             with dpg.collapsing_header(label="Color Management", default_open=False):
 
@@ -987,8 +992,10 @@ class fractal_Path_tracer(mglw.WindowConfig):
         if "iMode" in self.program:
             self.program["iMode"].value = self.iMode
         if "iCam_a" in self.program:
-            self.program["iCam_a"].value = self.iCam_a   
-
+            self.program["iCam_a"].value = self.iCam_a
+            
+        if "Camera_settings" in self.program:
+            self.program["Camera_settings"].value = tuple(float(x) for x in self.Camera_settings)
         if "World_settings" in self.program:
             self.program["World_settings"].value = tuple(float(x) for x in self.World_settings)
         if "SET" in self.program:
