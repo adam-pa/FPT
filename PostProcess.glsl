@@ -58,6 +58,7 @@ vec3 Highlight(sampler2D tex, vec2 uv, vec2 resolution, float threshold, float i
 float luminance(vec3 c) {
     return dot(c, vec3(0.2126, 0.7152, 0.0722)); // Rec.709
 }
+
 vec3 Saturation(vec3 color, float sat) {
     float l = luminance(color);
     return mix(vec3(l), color, sat);
@@ -70,7 +71,7 @@ void postProcess(out vec4 fragColor, vec2 fragCoord)
 
     vec3 color = ChromaticAberration(uAccum, uv, iResolution.xy, Post_settings[5]);
     color = color * Post_settings[1] + Post_settings[2];
-    color = (color - vec3(0.5)) * Post_settings[4] + vec3(0.5);
+    color = min((color - vec3(0.5)) * Post_settings[4] + vec3(0.5), vec3(1.0));
     color = Saturation(color, Post_settings[3]);
     color = Gamma_corect(color);
     vec3 highlight = Highlight(uAccum, uv, iResolution.xy, 0.5, Post_settings[6]);

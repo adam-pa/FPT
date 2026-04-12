@@ -6,14 +6,13 @@ import sys
 from PIL import Image
 import dearpygui.dearpygui as dpg
 import numpy as np
+import time as pytime
+import re
 
-#default
-Height = 1080 
-Width = 1920
 
 def resource_path(relative_path: str) -> Path:
     try:
-        base_path = Path(sys._MEIPASS)
+        base_path = Path(getattr(sys, "_MEIPASS", Path(__file__).parent))
     except AttributeError:
         base_path = Path(__file__).parent
     return base_path / relative_path
@@ -29,7 +28,7 @@ def vrotate_p(v, sin_p, cos_p, sin_y, cos_y):
 class fractal_Path_tracer(mglw.WindowConfig):
     gl_version = (4, 3)
     title = "Fractal Path tracer"
-    window_size = (Width , Height)
+    window_size = (1920 , 1080)
     aspect_ratio = None
     resizable = True
     
@@ -38,22 +37,46 @@ class fractal_Path_tracer(mglw.WindowConfig):
 
         self.frame = 0
         self.iCam_pos = [0.1, 0.1, -5.0]
-        self.iCam_yp = [0.0, 0.0]
+        self.iCam_yp = [0.,0.]
         self.iMode = 0
-        self.iCam_a = 0.01
-        self.cam_speed = 2.0
-        #Studio/Sky, Light Size, rotation, elevation, power, contrast
-        self.World_settings = [0.0,1.0,120.0,30.0,1.0,1.0]
-        #bounces, ni, normal quality
-        self.Render_settings = [5,512,0.001,0.0005,1000,0.25]
-        #Fov, 
-        self.Camera_settings = [90.0,0.0]
-        #gamma, exposure, brightness, saturation, contrast, chro, highlights
-        self.Post_settings = [0.0,1.0,0.0,1.0,1.0,0.0,0.0]
-        self.SET = [0.0 ,0.0 ,0.0 ,0.0 ,0.0 ,0.0 ,0.0 ,0.0]
+        
+        self.World_settings = [0.0, #Studio/Sky
+                               1.0, #Light Size
+                               120.0, #rotation
+                               30.0, #elevation
+                               1.0, #power
+                               1.0 #contrast
+                               ]
+
+        self.Render_settings = [5, #bounces
+                                512, #ni
+                                0.001, #normal quality
+                                0.0005, #min distance
+                                1000., #max distance
+                                0.25, #adaptive marching
+                                ]
+  
+        self.Camera_settings = [90.0, #fov
+                                0.01, #dof
+                                2.0 #camera speed
+                                ]
+        self.Post_settings = [0.0, #gamma
+                              1.0, #exposure
+                              0.0, #brightness
+                              1.0, #saturation
+                              1.0, #contrast
+                              0.0, #chro
+                              0.0 #highlights
+                              ]
+        
+        self.SET = [0.0 ,0.0 ,0.0 ,0.0 ,0.0 ,0.0 ,0.0 ,0.0] #settings
 
         self.prev_keys = set()
         self.keys_down = set()
+
+        self.mouse_pos_event_c = False
+        self.current_yp = [0.,0.]
+        self.current_mouse_pos = [0.,0.]
 
         self._fps_time_accum = 0.0
         self._fps_frame_accum = 0.0
@@ -65,6 +88,9 @@ class fractal_Path_tracer(mglw.WindowConfig):
         self.cos_y = math.cos(self.iCam_yp[0])
         
         self.Mouse_event = False
+
+        self.target_fps = 165.
+        self._frame_start = pytime.perf_counter()
 
         self.ui_render_width, self.ui_render_height = self.wnd.size
         self.pending_resize = None
@@ -111,14 +137,15 @@ class fractal_Path_tracer(mglw.WindowConfig):
         """
 
 
-
-
         self.program = self.ctx.program(
             vertex_shader=self.vertex_shader_source,
             fragment_shader=fragment_shader,
         )
+        
         if "HDRI" in self.program:
             self.program["HDRI"].value = 1
+        if "iFocus_pos" in self.program: 
+            self.program["iFocus_pos"].value = tuple([0.0,0.0])
 
         self.post_program = self.ctx.program(
             vertex_shader=self.vertex_shader_source,
@@ -194,7 +221,11 @@ class fractal_Path_tracer(mglw.WindowConfig):
         existing = sorted(Path(".").glob("Render*.png"))
         
         if existing:
-            numbers = [int(f.stem.replace("Render", "")) for f in existing if f.stem.replace("Render","").isdigit()]
+            numbers = [
+                int(m.group(1))
+                for f in existing
+                if (m := re.match(r"Render(\d+)$", f.stem))
+            ]
             number = max(numbers) + 1 if numbers else 1
         else:
             number = 1
@@ -258,7 +289,7 @@ class fractal_Path_tracer(mglw.WindowConfig):
         uniform sampler2D iPrevFrame;
         uniform sampler2D HDRI;
         
-        uniform float Camera_settings[2];
+        uniform float Camera_settings[3];
         uniform float World_settings[6];
         uniform float SET[8];
         uniform float Render_settings[6];
@@ -334,16 +365,17 @@ class fractal_Path_tracer(mglw.WindowConfig):
             self.World_settings[0] = 2
     
         self.frame = 0 
-    def on_world_slider(self, sender, value, user_data):
+    def on_world_c(self, sender, value, user_data):
         self.World_settings[user_data] = float(value)
         self.frame = 0
-    def on_render_slider(self, sender, value, user_data):
+    def on_render_c(self, sender, value, user_data):
         self.Render_settings[user_data] = float(value)
         self.frame = 0
-
-    def on_camera_slider(self, sender, value, user_data):
+    def on_camera_c(self, sender, value, user_data):
         self.Camera_settings[user_data] = float(value)
-        self.frame = 0    
+        self.frame = 0
+    def on_fpsCap_c(self, sender, value):
+        self.target_fps = float(value)
         
     def close(self):
         if hasattr(self, "accum_textures"):
@@ -369,45 +401,35 @@ class fractal_Path_tracer(mglw.WindowConfig):
         if app_data == "DCI-P3": self.Post_settings[0] = 2
         if app_data == "ACES": self.Post_settings[0] = 3
         if app_data == "RAW": self.Post_settings[0] = 4
-    def on_post_slider(self, sender, value, user_data):
+    def on_post_c(self, sender, value, user_data):
         self.Post_settings[user_data] = float(value)
 
     def load_hdri_callback(self, sender, app_data):
         if not app_data or not app_data.get("file_path_name"):
             return
         path = app_data["file_path_name"]
-        try:
-            import imageio.v2 as imageio 
-            img = imageio.imread(path)
 
-            if img.ndim == 2:
-                img = np.stack([img, img, img], axis=-1)
-    
-            if img.shape[2] > 3:
-                img = img[:, :, :3]
+        import imageio.v2 as imageio 
+        img = imageio.imread(path)
+        if img.ndim == 2:
+            img = np.stack([img, img, img], axis=-1)
+        if img.shape[2] > 3:
+            img = img[:, :, :3]
+        if img.dtype != np.uint8:
+            img = np.clip(img, 0, 1)
+            img = (img * 255).astype(np.uint8)
+        h, w, _ = img.shape
+        data = img.tobytes()
 
-            if img.dtype != np.uint8:
-                img = np.clip(img, 0, 1)
-                img = (img * 255).astype(np.uint8)
-    
-            h, w, _ = img.shape
-            data = img.tobytes()
-    
-            self.pending_hdri = (w, h, data)
-    
-        except Exception as e:
-            print("HDRI load failed:", e)
-
+        self.pending_hdri = (w, h, data)
 
     def load_fonts(self):
         font_path = resource_path("fonts/JetBrainsMono-Regular.ttf")
         with dpg.font_registry():
             self.font = dpg.add_font(str(font_path), 64) 
-    
         dpg.bind_font(self.font)
         
     def set_ui_scale(self, sender, app_data):
-    
         scale_map = {
             "70%": self.default_ui_scale * 0.85,
             "100%": self.default_ui_scale,
@@ -415,8 +437,7 @@ class fractal_Path_tracer(mglw.WindowConfig):
             "160%": self.default_ui_scale * 1.66,
             "200%": self.default_ui_scale * 2.0
         }
-    
-        dpg.set_global_font_scale(scale_map[app_data])
+        dpg.set_global_font_scale(scale_map[app_data]) 
 
         
     def on_key_event(self, key, action, modifiers):
@@ -426,6 +447,7 @@ class fractal_Path_tracer(mglw.WindowConfig):
         elif action == keys.ACTION_RELEASE:
             self.keys_down.discard(key)
             
+        
     def on_mouse_press_event(self, x, y, button):
         w = self.wnd.buffer_width
         h = self.wnd.buffer_height
@@ -438,14 +460,33 @@ class fractal_Path_tracer(mglw.WindowConfig):
             self.frame = 0
             if "iFocus_pos" in self.program:
                 self.program["iFocus_pos"].value = tuple([x,-y])
+        if button == 2:
+            self.mouse_pos_event_c = True
+            self.current_yp = self.iCam_yp.copy()
+            self.current_mouse_pos = [x,y].copy()
+            
+    def on_mouse_release_event(self, x: int, y: int, button: int):
+        if button == 2:
+            self.mouse_pos_event_c = False
+
+    def on_mouse_drag_event(self, x, y, dx, dy):
+        w = self.wnd.buffer_width
+        h = self.wnd.buffer_height
+        x /= w
+        y /= h
+        x -= 0.5
+        y -= 0.5
+        x *= w/h
+        if self.mouse_pos_event_c == True:
+            self.frame = 0
+            self.sin_p = math.sin(self.iCam_yp[1])
+            self.cos_p = math.cos(self.iCam_yp[1])
+            self.sin_y = math.sin(self.iCam_yp[0])
+            self.cos_y = math.cos(self.iCam_yp[0])
+            self.iCam_yp[0] = self.current_yp[0] + (x-self.current_mouse_pos[0])*3.
+            self.iCam_yp[1] = self.current_yp[1] + -(y-self.current_mouse_pos[1])*3.
+            
                 
-    def on_mouse_scroll_event(self, x_offset: float, y_offset: float):
-        if y_offset > 0. and not self.iCam_a >= 0.2:
-            self.frame = 0
-            self.iCam_a += y_offset / 1000.
-        if y_offset < 0. and not self.iCam_a <= 0.:
-            self.frame = 0
-            self.iCam_a += y_offset / 1000.
         
 
     #UI---------------------------------------------------------------------------------------------------------------UI
@@ -467,20 +508,19 @@ class fractal_Path_tracer(mglw.WindowConfig):
                 show=False,
                 tag="help_popup",
                 no_title_bar=False,
-                width=360,
-                height=220,
+                width=400,
+                height=420,
         ):
             dpg.add_text("Fractal Path Tracer")
             dpg.add_separator()
             dpg.add_text(
                 " WASD / QE : Move camera\n"
-                " Arrow keys : Rotate camera\n"
+                " Arrow keys and right click : Rotate camera\n"
                 " R : Toggle render / preview\n"
-                " Scroll to change the depth of field\n"
                 " Ctrl + S : Save render\n"
-                " Click where you want to focus the camera\n"
                 " Shift : go faster! \n"
                 " Shift + Space : go even faster!! \n"
+                " Right click : focus the camera\n"
                 "\n"
                 " Edit the GLSL SDF code and press\n"
                 " 'Recompile SDF' to update.\n"
@@ -529,7 +569,6 @@ class fractal_Path_tracer(mglw.WindowConfig):
                     )
             
                     dpg.add_spacer()
-            
                     dpg.add_button(
                         label="Save Render!",
                         callback=self.on_render_button
@@ -547,6 +586,7 @@ class fractal_Path_tracer(mglw.WindowConfig):
                             multiline=True,
                             height=360,
                             width= -1,
+                            tab_input=True,
                             default_value=(
                                 "// made by: michael0884\n"
                                 "vec2 De( vec3 p) {\n"
@@ -585,6 +625,7 @@ class fractal_Path_tracer(mglw.WindowConfig):
                             multiline=True,
                             height=360,
                             width= -1,
+                            tab_input=True,
                             default_value=(
                                 "//example sdf\n"
                                 "vec2 fractal = De(p);\n"
@@ -595,10 +636,10 @@ class fractal_Path_tracer(mglw.WindowConfig):
                                 "material.rgb = Hsv2rgb(HSV);\n"
                                 "material.roughness = 1.0;\n"
                                 "material.specular = 0.0;\n"
+                                "material.translucency = 0.0;\n"
                                 "material.ior = 1.5;\n"
-                                "material.specularRoughness = 0.0;\n"
                                 "material.emission = 0.0;\n"
-
+                            
                             )
                         )
 
@@ -630,13 +671,28 @@ class fractal_Path_tracer(mglw.WindowConfig):
                             
             dpg.add_separator()
             with dpg.collapsing_header(label="Camera Settings", default_open=False):
-                dpg.add_slider_float(
+                dpg.add_slider_float( 
                     label="Fov",
                     min_value=0.0,
                     max_value=180,
                     default_value=self.Camera_settings[0],
-                    callback=self.on_camera_slider,
+                    callback=self.on_camera_c,
                     user_data=0,
+                )
+            
+                dpg.add_slider_float(
+                    label="Depth of field",
+                    min_value=0.0,
+                    max_value=0.2,
+                    default_value=self.Camera_settings[1],
+                    callback=self.on_camera_c,
+                    user_data=1,
+                )
+                dpg.add_input_float(
+                    label="Camera Speed",
+                    default_value=self.Camera_settings[2],
+                    callback=self.on_camera_c,
+                    user_data=2,
                 )
                 
             dpg.add_separator()
@@ -645,19 +701,19 @@ class fractal_Path_tracer(mglw.WindowConfig):
                 dpg.add_input_int(
                     label="Bounces",
                     default_value=int(self.Render_settings[0]),
-                    callback=self.on_render_slider,
+                    callback=self.on_render_c,
                     user_data=0
                 )
                 dpg.add_input_int(
                     label="Marching Steps",
                     default_value=int(self.Render_settings[1]),
-                    callback=self.on_render_slider,
+                    callback=self.on_render_c,
                     user_data=1
                 )
                 dpg.add_input_float(
                     label="Normal Epsilon",
                     default_value=self.Render_settings[2],
-                    callback=self.on_render_slider,
+                    callback=self.on_render_c,
                     user_data=2,
                     step=0.00005,
                     format="%.6f"
@@ -665,15 +721,15 @@ class fractal_Path_tracer(mglw.WindowConfig):
                 dpg.add_input_float(
                     label="Min Distance",
                     default_value=self.Render_settings[3],
-                    callback=self.on_render_slider,
+                    callback=self.on_render_c,
                     user_data=3,
                     step=0.00005,
                     format="%.6f"
                 )
                 dpg.add_input_float(
                     label="Max Distance",
-                    default_value=self.Render_settings[4],
-                    callback=self.on_render_slider,
+                    default_value=self.Render_settings[4], 
+                    callback=self.on_render_c,
                     user_data=4,
                     step=10.,
                 )
@@ -682,9 +738,18 @@ class fractal_Path_tracer(mglw.WindowConfig):
                     default_value=self.Render_settings[5],
                     min_value=0,
                     max_value=1,
-                    callback=self.on_render_slider,
+                    callback=self.on_render_c,
                     user_data=5
                 )
+
+                dpg.add_slider_float(
+                    label="Max FPS",
+                    default_value=165.,
+                    min_value=60,
+                    max_value=250,
+                    callback=self.on_fpsCap_c,
+                )
+                
                 dpg.add_separator()
                 dpg.add_text("Render Resolution")
 
@@ -732,7 +797,7 @@ class fractal_Path_tracer(mglw.WindowConfig):
                     min_value=0.0,
                     max_value=2.0,
                     default_value=self.World_settings[1],
-                    callback=self.on_world_slider,
+                    callback=self.on_world_c,
                     user_data=1
                 )
                 dpg.add_slider_float(
@@ -740,27 +805,28 @@ class fractal_Path_tracer(mglw.WindowConfig):
                     min_value=0.0,
                     max_value=360,
                     default_value=self.World_settings[2],
-                    callback=self.on_world_slider,
+                    callback=self.on_world_c,
                     user_data=2
                 )
+
                 dpg.add_slider_float(
                     label="Light Elevation",
                     min_value=0.0,
                     max_value=360,
                     default_value=self.World_settings[3],
-                    callback=self.on_world_slider,
+                    callback=self.on_world_c,
                     user_data=3
                 )
                 dpg.add_input_float(
                     label="Power",
                     default_value=self.World_settings[4],
-                    callback=self.on_world_slider,
+                    callback=self.on_world_c,
                     user_data=4
                 )
                 dpg.add_input_float(
                     label="Contrast",
                     default_value=self.World_settings[5],
-                    callback=self.on_world_slider,
+                    callback=self.on_world_c,
                     user_data=5,
                     step = 0.01
                 )
@@ -780,7 +846,7 @@ class fractal_Path_tracer(mglw.WindowConfig):
                     min_value=0.0,
                     max_value=3.0,
                     default_value=self.Post_settings[1],
-                    callback=self.on_post_slider,
+                    callback=self.on_post_c,
                     user_data=1
                 )
                 dpg.add_slider_float(
@@ -788,7 +854,7 @@ class fractal_Path_tracer(mglw.WindowConfig):
                     min_value=-1.0,
                     max_value=1.0,
                     default_value=self.Post_settings[2],
-                    callback=self.on_post_slider,
+                    callback=self.on_post_c,
                     user_data=2
                 )
                 dpg.add_slider_float(
@@ -796,7 +862,7 @@ class fractal_Path_tracer(mglw.WindowConfig):
                     min_value=0.0,
                     max_value=2.0,
                     default_value=self.Post_settings[3],
-                    callback=self.on_post_slider,
+                    callback=self.on_post_c,
                     user_data=3
                 )
                 dpg.add_slider_float(
@@ -804,7 +870,7 @@ class fractal_Path_tracer(mglw.WindowConfig):
                     min_value=0.5,
                     max_value=3.0,
                     default_value=self.Post_settings[4],
-                    callback=self.on_post_slider,
+                    callback=self.on_post_c,
                     user_data=4
                 )
                 dpg.add_slider_float(
@@ -812,7 +878,7 @@ class fractal_Path_tracer(mglw.WindowConfig):
                     min_value=0.0,
                     max_value=1.0,
                     default_value=self.Post_settings[5],
-                    callback=self.on_post_slider,
+                    callback=self.on_post_c,
                     user_data=5
                 )
                 dpg.add_slider_float(
@@ -820,7 +886,7 @@ class fractal_Path_tracer(mglw.WindowConfig):
                     min_value=0.0,
                     max_value=1.0,
                     default_value=self.Post_settings[6],
-                    callback=self.on_post_slider,
+                    callback=self.on_post_c,
                     user_data=6
                 )
 
@@ -860,11 +926,9 @@ class fractal_Path_tracer(mglw.WindowConfig):
         if self.pending_resize is not None:
             width, height = self.pending_resize
             self.pending_resize = None
-        
             self.ctx.finish()
             self.ctx.screen.use()
             self.ctx.viewport = (0, 0, width, height)
-        
             self.resize_accumulation_buffers(width, height)
             self.frame = 0  
             
@@ -900,14 +964,9 @@ class fractal_Path_tracer(mglw.WindowConfig):
             else:
                 self.iMode = 1
 
-        #camera-------------
-        if self.iCam_a > 0.2:
-            self.iCam_a = 0.2
-        if self.iCam_a < 0.0:
-            self.iCam_a = 0.0
         #rotation-------------------------------------------------------------------------------------------------------
         if not keys.LEFT_CTRL in self.keys_down:
-            speed_yp = self.cam_speed * frame_time * 0.5
+            speed_yp = self.Camera_settings[2] * frame_time * 0.5
             
             if keys.LEFT in self.keys_down:
                 self.iCam_yp[0] -= speed_yp
@@ -932,7 +991,7 @@ class fractal_Path_tracer(mglw.WindowConfig):
         #movement-------------------------------------------------------------------------------------------------------
         if not keys.LEFT_CTRL in self.keys_down:
 
-            speed_pos = self.cam_speed * frame_time * 0.25
+            speed_pos = self.Camera_settings[2] * frame_time * 0.25
             
             if keys.LEFT_SHIFT in self.keys_down:
                 speed_pos *= 5
@@ -963,13 +1022,13 @@ class fractal_Path_tracer(mglw.WindowConfig):
                     self.iCam_pos[i] -= direction[i] * speed_pos
 
             if keys.E in self.keys_down:
+                direction = vrotate_p([0.0, 1.0, 0.0], self.sin_p , self.cos_p, self.sin_y, self.cos_y)
                 for i in range(3):
-                    direction = vrotate_p([0.0, 1.0, 0.0], self.sin_p , self.cos_p, self.sin_y, self.cos_y)
                     self.iCam_pos[i] += direction[i] * speed_pos
 
             if keys.Q in self.keys_down:
+                direction = vrotate_p([0.0, 1.0, 0.0], self.sin_p , self.cos_p, self.sin_y, self.cos_y)
                 for i in range(3):
-                    direction = vrotate_p([0.0, 1.0, 0.0], self.sin_p , self.cos_p, self.sin_y, self.cos_y)
                     self.iCam_pos[i] -= direction[i] * speed_pos
 
             if (
@@ -991,8 +1050,6 @@ class fractal_Path_tracer(mglw.WindowConfig):
             self.program["iCam_yp"].value = tuple(self.iCam_yp) 
         if "iMode" in self.program:
             self.program["iMode"].value = self.iMode
-        if "iCam_a" in self.program:
-            self.program["iCam_a"].value = self.iCam_a
             
         if "Camera_settings" in self.program:
             self.program["Camera_settings"].value = tuple(float(x) for x in self.Camera_settings)
@@ -1033,13 +1090,10 @@ class fractal_Path_tracer(mglw.WindowConfig):
             self.ctx.clear(0.0, 0.0, 0.0, 0.0)
 
 
-
         if self.iMode == 0:
             self.ctx.screen.use()
             self.ctx.viewport = (0, 0, w, h)
-
             self.program["iFrame"].value = 0
-
             self.quad.render(self.program)
 
         else:
@@ -1071,9 +1125,8 @@ class fractal_Path_tracer(mglw.WindowConfig):
 
 
 
-        self.wnd.title = (f"FPT | FPS: {self._last_fps:.1f} | Depth of field strength: {self.iCam_a:.3f} |")
-
-        #save render---------------------
+        self.wnd.title = (f"FPT | FPS: {self._last_fps:.1f} | Depth of field strength: {self.Camera_settings[1]:.3f} |")
+ 
         if (
                 keys.S in just_pressed
                 and keys.LEFT_CTRL in self.keys_down
@@ -1083,7 +1136,22 @@ class fractal_Path_tracer(mglw.WindowConfig):
             self.save_screenshot()
             self.request_save_render = False
 
-
-        dpg.render_dearpygui_frame()
+        #ui render---------------------
+        if self.target_fps > 70 or self._last_fps < 60:
+            if self.frame % 3 == 0:   # 60Hz UI
+                dpg.render_dearpygui_frame()
+        else:
+            dpg.render_dearpygui_frame()
+        
+        #fps cap---------------------
+        frame_time_target = 1.0 / self.target_fps
+        now = pytime.perf_counter()
+        elapsed = now - self._frame_start  
+        if elapsed < frame_time_target:
+            pytime.sleep(frame_time_target - elapsed)
+            now = pytime.perf_counter() 
+        self._frame_start = now 
+        
+        
 if __name__ == "__main__":
     mglw.run_window_config(fractal_Path_tracer)

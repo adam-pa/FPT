@@ -13,8 +13,8 @@ struct Material {
 	vec3 rgb;
     float roughness;
     float specular;
+    float translucency;
     float ior;
-    float specularRoughness;
     float emission;
 };
 
@@ -22,6 +22,7 @@ struct BRDFResult {
     vec3 dr;
     vec3 rp;
     vec3 color;
+    float side;
 };
 
 Material defaultMaterial() {
@@ -29,8 +30,8 @@ Material defaultMaterial() {
 	m.rgb = vec3(1.0,1.0,1.0);
     m.roughness = 1.0;
     m.specular = 0.0;
+    m.translucency = 0.0;
     m.ior = 1.5;
-    m.specularRoughness = 0.0;
     m.emission = 0.0;
     return m;
 }
@@ -172,8 +173,6 @@ vec3 Environment(vec3 viewDir){
 
 
 //object function------------------------------------------------------object function
-
-
 struct SDFResult { 
     float distance;
     Material material;
@@ -185,8 +184,7 @@ struct SDFResult {
 // ---------------------------------------
 
 float Object(vec3 p){
-    //crash protection
-    float dis = min(UserSDF(p).distance, length(p));
+    float dis = UserSDF(p).distance;
     return dis;
 } 
 
@@ -196,16 +194,19 @@ vec3 Ray(vec3 dr, vec3 rp, int ni, float min_dist){
     
     vec3 cam_pos = rp;
     for (int i = 0; i < ni; i++){
-        float o = Object(rp) * 0.99;
+        float o = abs(Object(rp)) * 0.99;
         rp += dr * o;
         float fog_lod = dot(cam_pos - rp, cam_pos - rp);
         float lod = mix(0.1, min_dist, lod_falloff/(fog_lod + lod_falloff));
+        if (UserSDF(rp).material.translucency > 0.0){lod = 0.0001;}
         if (o < lod) break;
 		if (Render_settings[4] < o) break;
 		
     }
     return rp;
 }
+
+
 
 //Normal calculation
 vec3 Normal(vec3 p){
@@ -222,12 +223,12 @@ vec3 Normal(vec3 p){
 Material Material_properties(vec3 rp){
     Material material;
     // default
-	material.rgb = UserSDF(rp).material.rgb;
+	material.rgb                = UserSDF(rp).material.rgb;
     material.roughness          = UserSDF(rp).material.roughness;
     material.specular           = UserSDF(rp).material.specular;
+    material.translucency       = UserSDF(rp).material.translucency;
     material.ior                = UserSDF(rp).material.ior;
-    material.specularRoughness  = UserSDF(rp).material.specularRoughness;
-    material.emission           = UserSDF(rp).material.emission;
+    material.emission           = UserSDF(rp).material.emission; 
 
     return material;
 }
@@ -239,44 +240,76 @@ Material Material_properties(vec3 rp){
 BRDFResult BRDF(
     vec3 dr, 
     vec3 rp,
+    float side,
     float frame, 
     int i, 
     vec2 xy
 ){
-    Material material = Material_properties(rp);
+    Material material = UserSDF(rp).material;
     vec3 color = material.rgb;
+    float ior = material.ior;
 
 	vec3 n = Normal(rp);
-
-    //fresnel
-    float ior = material.ior;
-    float f0 = pow((ior- 1.0) / (ior + 1.0), 2.0);
-    float cosTheta = clamp(dot(n, -dr), 0.0, 1.0);
-    float fresnel = f0 + (1.0 - f0) * pow(1.0 - cosTheta, 5.0);
     
     vec3 metal = reflect(dr, n);
     vec3 diffuse = Random_Vector(n,xy, frame + float(i) * 13.37);
-    vec3 specular = mix(metal, diffuse, material.specularRoughness);
+    vec3 specular = reflect(dr, n);
+
+    float r1 = HoskinsRand(vec3(xy, frame + float(i) * 1.37));
+    float r2 = HoskinsRand(vec3(xy, frame + float(i) * 7.91));
     
-    dr = mix(metal, diffuse, material.roughness); //metalic
+    if ( r1 > material.translucency ){
 
-    if (HoskinsRand(vec3(xy, hash11(frame + 16.89))) < fresnel * material.specular) {
-        dr = specular;
-        color = vec3(1.0);
+        //fresnel
+        float f0 = pow((ior- 1.0) / (ior + 1.0), 2.0);
+        float cosTheta = clamp(dot(n, -dr), 0.0, 1.0);
+        float fresnel = f0 + (1.0 - f0) * pow(1.0 - cosTheta, 5.0);
+
+        dr = mix(metal, diffuse, material.roughness); //metalic
+
+        if (r2 < fresnel * material.specular) {
+            dr = specular;
+            color = vec3(1.0);
+        }
+
+    }else{
+
+        float eta;
+        if (side == 1.0){eta = 1.0 / ior;}
+        else{eta = ior; n = -n;}
+
+        //fresnel
+        float f0 = pow((ior- 1.0) / (ior + 1.0), 2.0);
+        float cosTheta = clamp(dot(n, -dr), 0.0, 1.0);
+        float fresnel = f0 + (1.0 - f0) * pow(1.0 - cosTheta, 5.0);
+
+        vec3 refracted = refract(dr, n, eta);
+        vec3 reflected = reflect(dr, n);
+
+        vec3 jitterR = Random_Vector(reflected, xy, frame + float(i));
+        vec3 jitterT = Random_Vector(refracted, xy, frame + float(i) + 17.0);
+
+        reflected = normalize(mix(reflected, jitterR, material.roughness));
+        refracted = normalize(mix(refracted, jitterT, material.roughness));
+
+        if (r2 < fresnel) {
+            dr = reflected;
+        } else {
+            dr = refracted;
+            side *= -1;
+            color *= (1.0 - fresnel);
+        }
+                
+
     }
-
-    //error protection
-    vec3 rp_s = rp;
-    rp += n * 0.002;
-    if (Object(rp) < 0.002){
-          rp = rp_s + n * 0.001;
-    }else{rp = rp_s + n * 0.002;}
+    rp += n * 0.001 * sign(dot(dr, n));
 
 
     BRDFResult result;
     result.dr = dr;
     result.rp = rp;
     result.color = color;
+    result.side = side;
     return result;
 }
 
@@ -290,14 +323,16 @@ vec3 Render(vec2 xy, vec3 rp,vec2 cam_yp, float frame){
     vec3 dr = normalize(vec3(xy + Random_point(0.0002, xy, frame).xy, focal_length));
     dr = Rotate(dr, cam_yp);
     vec3 fp = rp + dr * cam_d; 
-    rp += Rotate( Random_point( iCam_a, xy, frame ), cam_yp );
+    rp += Rotate( Random_point( Camera_settings[1] , xy, frame ), cam_yp );
     dr = normalize(fp - rp);
 
     vec3 cam_pos = rp;
     
     vec3 pixellight = vec3(0.0);
     vec3 pixelcolor = vec3(1.0);
+
 	int local_ni = ni;
+    float side = 1;
     
     
     for (int i = 0; i < Render_settings[0]; i++){
@@ -305,7 +340,7 @@ vec3 Render(vec2 xy, vec3 rp,vec2 cam_yp, float frame){
 		//Optimization
 		local_ni = int(float(ni)/(Render_settings[5]*2. + 1.));
 
-        Material material = Material_properties(rp);
+        Material material = UserSDF(rp).material;
 
 		//light------------light
         if (length(rp - cam_pos) > Render_settings[4]){
@@ -316,9 +351,10 @@ vec3 Render(vec2 xy, vec3 rp,vec2 cam_yp, float frame){
             pixellight += material.rgb * material.emission;
             break;}
    
-        BRDFResult brdf = BRDF(dr, rp, frame, i, xy);
+        BRDFResult brdf = BRDF(dr, rp, side, frame, i, xy);
         rp = brdf.rp;
         dr = brdf.dr;
+        side = brdf.side;
         pixelcolor *= brdf.color;
     }    
     return pixellight * pixelcolor;
@@ -334,8 +370,7 @@ vec3 Viewport(vec2 xy, vec3 rp,vec2 cam_yp){
     vec3 n = Normal(rp); 
     vec3 li = normalize(vec3(1.0,0.3,0.0));
 
-    Material material = Material_properties(rp);
-    vec3 color = material.rgb;
+    vec3 color = UserSDF(rp).material.rgb;
 
     float diffuse = max(dot(li,n), 0.0);
 
@@ -352,8 +387,6 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord)
     vec2 uv = suv - 0.5;
     uv.x *= iResolution.x / iResolution.y;
 
-    vec3 cam_pos = iCam_Pos;
-    vec2 cam_yp  = iCam_yp;
 
 	//Render setings
     if (iMode == 1) {
@@ -364,7 +397,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord)
 	//acumulation
     vec3 accum;
     if (iMode == 1) {
-        vec3 col = Render(uv, cam_pos, cam_yp, float(iFrame));
+        vec3 col = Render(uv, iCam_Pos, iCam_yp, float(iFrame));
 
         if (iFrame == 0) {
             accum = col;
@@ -374,7 +407,6 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord)
         }
         fragColor = vec4(accum, 1.0);
 
-    }else{fragColor = vec4(Viewport(uv, cam_pos, cam_yp),1.0);}
+    }else{fragColor = vec4(Viewport(uv, iCam_Pos, iCam_yp),1.0);}
      
 }
-
