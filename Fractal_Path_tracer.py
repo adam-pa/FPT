@@ -520,7 +520,7 @@ class fractal_Path_tracer(mglw.WindowConfig):
                 " Ctrl + S : Save render\n"
                 " Shift : go faster! \n"
                 " Shift + Space : go even faster!! \n"
-                " Right click : focus the camera\n"
+                " Left click : focus the camera\n"
                 "\n"
                 " Edit the GLSL SDF code and press\n"
                 " 'Recompile SDF' to update.\n"
