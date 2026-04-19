@@ -1,5 +1,5 @@
 # FPT - Fractal Path Tracer 
-FPT is a free sdf and open-source path tracer! <br>
+FPT is a free and open-source sdf path tracer! <br>
 If you have any suggestions would love to hear them! <br>
 Also if you make any cool renders pls send them, I love seeing my program in use ;) <br>
 My insta: https://www.instagram.com/adamp.art/ 
