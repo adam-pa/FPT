@@ -1,8 +1,44 @@
-# FPT - Fractal Path Tracer
-FPT is a free sdf path tracer!
-If you have any suggestions would love to hear them!
-Also if you make any cool renders pls send them, I love seeing my program in use ;) 
-My insta: https://www.instagram.com/adamp.art/
+# FPT - Fractal Path Tracer 
+FPT is a free sdf and open-source path tracer! <br>
+If you have any suggestions would love to hear them! <br>
+Also if you make any cool renders pls send them, I love seeing my program in use ;) <br>
+My insta: https://www.instagram.com/adamp.art/ 
+<br>
+<br>
+
+## Creating SDFs in FPT
+In FPT, you define objects using Signed Distance Functions (SDFs) written in GLSL. <br>
+An SDF calculates the shortest distance between a given point in space and the surface of an object.
+
+### The Basics 
+To create a shape, go to the "sdf" tab and assign a value to the sdf variable. <br>
+This is calculated based on ```p```, which represents the current position vector. <br>
+An example sphere sdf:
+```
+sdf = length(p) - 1.0;
+```
+### Helper Functions
+If for example you want do define a function you have to do it in the "Helper functions" tab. <br> 
+An example sphere sdf function:
+```
+float sdSphere(vec3 p, float radius) {
+  return length(p) - radius;
+}
+```
+You can also define surface properties within the sdf tab using the ```material``` struct:
+```
+material.rgb          = vec3(1.0); // Surface color
+material.roughness    = 1.0;       // Surface micro-detail
+material.specular     = 0.0;       // Reflectivity
+material.translucency = 0.0;       // Translucency
+material.ior          = 1.5;       // Index of Refraction
+material.emission     = 0.0;       // Emission intensity
+```
+
+
+## Sample Scenes
+You can find .txt files in the `Sample scenes/` directory, that has examples for you to try out, by pasting in to FPT.
+  
 --------
 ![Render005](https://github.com/user-attachments/assets/64d05615-bc69-4160-a27d-92a1a1b1ac41)
 <img width="1920" height="1080" alt="Render_14" src="https://github.com/user-attachments/assets/d1caa0c9-73d1-4c21-aba8-faee8d2d6639" />
