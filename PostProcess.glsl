@@ -67,13 +67,18 @@ vec3 Saturation(vec3 color, float sat) {
 
 void postProcess(out vec4 fragColor, vec2 fragCoord)
 {
-    vec2 uv = fragCoord / iResolution.xy;
+    vec2 uv = fragCoord / Resolution.xy;
 
-    vec3 color = ChromaticAberration(uAccum, uv, iResolution.xy, Post_settings[5]);
-    color = color * Post_settings[1] + Post_settings[2];
-    color = min((color - vec3(0.5)) * Post_settings[4] + vec3(0.5), vec3(1.0));
-    color = Saturation(color, Post_settings[3]);
+    vec3 color = vec3(0.);
+
+    color = ChromaticAberration(uAccum, uv, Resolution.xy, Post_settings[5]);
+    color += Highlight(uAccum, uv, Resolution.xy, 0.5, Post_settings[6]);
+
     color = Gamma_corect(color);
-    vec3 highlight = Highlight(uAccum, uv, iResolution.xy, 0.5, Post_settings[6]);
-    fragColor = vec4(color + highlight, 1.0);
+    color = color * Post_settings[1] + Post_settings[2];
+    color = (color - vec3(0.5)) * Post_settings[4] + vec3(0.5);
+    color = Saturation(color, Post_settings[3]);
+
+    color = clamp(color, vec3(0.), vec3(1.));
+    fragColor = vec4(color, 1.0);
 }

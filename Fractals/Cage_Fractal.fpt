@@ -1,0 +1,134 @@
+SDF:
+{
+	vec2 fractal = de(p);
+	sdf = fractal.x;
+
+	float Orbit_Trap = fractal.y*(1.+SET[1])/5. + 0.3 + SET[0];
+
+	vec3 HSV = vec3( Orbit_Trap ,0.5 ,1.);
+
+	//Material Settings:
+	material.rgb = Hsv2rgb(HSV);
+	material.roughness = 1.0;
+	material.specular = 0.0;
+	material.translucency = 0.0;
+	material.ior = 1.5;
+	material.emission = 0.0;
+
+
+
+
+
+
+}
+Helper Functions:
+{
+	//made by: Nameless
+	vec2 de(vec3 p0){
+		float sdf = 0.0;
+		float col = 0.0; 
+
+	    vec4 p = vec4(p0,3.);
+	    float escape = 0.;
+	    p*= 2./min(dot(p.xyz,p.xyz),30.);
+	    for(int i = 0; i < 14; i++){
+	        p.xyz = vec3(2.,4.,2.)-(abs(p.xyz)-vec3(1. +(SET[2]*4.),12.+(SET[3]*4.)*1./3.,2.+(SET[4]*4.)));
+	        p.xyz = mod(p.xyz-4., 8.)-4.;
+	        p *= 9./min(dot(p.xyz,p.xyz),12.);
+	        escape += exp(-0.2*dot(p.xyz,p.xyz));
+			sdf = length(p.xyz -clamp(p.xyz, -1.2,1.2))/p.w;
+			col += sdf;
+	    }
+
+	    return vec2(max(sdf, length(p0)-(SET[5])),col);
+	  }
+
+
+
+
+}
+SDF Settings:
+{
+	Color offset
+	-0.6510000228881836
+	Color change speed
+	-0.9139999747276306
+	Angle x
+	0.0
+	Angle y
+	0.0
+	Angle z
+	0.0
+	Limit
+	20.0
+	
+	0.0
+	
+	0.0
+	
+	0.0
+	
+	0.0
+	
+	0.0
+	
+	0.0
+	
+	0.0
+	
+	0.0
+	
+	0.0
+	
+	0.0
+	
+	0.0
+	
+	0.0
+	
+	0.0
+	
+	0.0
+}
+{
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+}

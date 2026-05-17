@@ -1,0 +1,174 @@
+SDF:
+{
+	vec2 fractal = de(p);
+	sdf = fractal.x;
+
+	float Orbit_Trap = fractal.y*(1.+SET[1])/5. + 0.3 + SET[0];
+
+	vec3 HSV = vec3( Orbit_Trap ,0.5 ,1.);
+
+	//Material Settings:
+	material.rgb = Hsv2rgb(HSV);
+	material.roughness = 1.0;
+	material.specular = 0.0;
+	material.translucency = 0.0;
+	material.ior = 1.5;
+	material.emission = 0.0;
+
+
+
+
+
+}
+Helper Functions:
+{
+	//made by: scaprendering
+
+	vec3 Rotate(vec3 z,float AngPFXY,float AngPFYZ,float AngPFXZ) {
+	        float sPFXY = sin(radians(AngPFXY)); float cPFXY = cos(radians(AngPFXY));
+	        float sPFYZ = sin(radians(AngPFYZ)); float cPFYZ = cos(radians(AngPFYZ));
+	        float sPFXZ = sin(radians(AngPFXZ)); float cPFXZ = cos(radians(AngPFXZ));
+
+	        float zx = z.x; float zy = z.y; float zz = z.z; float t;
+
+	        // rotate BACK
+	        t = zx; // XY
+	        zx = cPFXY * t - sPFXY * zy; zy = sPFXY * t + cPFXY * zy;
+	        t = zx; // XZ
+	        zx = cPFXZ * t + sPFXZ * zz; zz = -sPFXZ * t + cPFXZ * zz;
+	        t = zy; // YZ
+	        zy = cPFYZ * t - sPFYZ * zz; zz = sPFYZ * t + cPFYZ * zz;
+	        return vec3(zx,zy,zz);
+	}
+
+
+	vec2 de( vec3 p ) {
+	    float Scale = 1.34f;
+	    float FoldY = 1.025709f;
+	    float FoldX = 1.025709f;
+	    float FoldZ = 0.035271f;
+	    float JuliaX = -1.763517f+SET[5];
+	    float JuliaY = 0.392486f+SET[6];
+	    float JuliaZ = -1.734913f+SET[7];
+	    float AngX = -51.080209f +SET[2]*90.;
+	    float AngY = 0.0f+SET[3]*90.;
+	    float AngZ = -29.096322f+SET[4]*90.;
+	    float Offset = -3.036726f;
+	    int EnableOffset = 1;
+	    int Iterations = 50;
+	    float Precision = 1.0f;
+	    // output _sdf c = _SDFDEF)
+
+		float sdf = 0.0;
+		float col = 0.0;
+
+	    float u2 = 1;
+	    float v2 = 1;
+	    if(EnableOffset == 1.)p = Offset+abs(vec3(p.x,p.y,p.z));
+
+	    vec3 p0 = vec3(JuliaX,JuliaY,JuliaZ);
+	    float l = 0.0;
+	    int i=0;
+	    for (i=0; i<Iterations; i++) {
+	        p = Rotate(p,AngX,AngY,AngZ);
+	        p.x=abs(p.x+FoldX)-FoldX;
+	        p.y=abs(p.y+FoldY)-FoldY;
+	        p.z=abs(p.z+FoldZ)-FoldZ;
+	        p=p*Scale+p0;
+	        l=length(p);
+	        float rr = dot(p,p);
+			sdf = Precision*(l)*pow(Scale, -float(i));
+			col += sdf;
+	    }
+	    return vec2(sdf * 0.7,col);
+	}
+
+
+
+
+}
+SDF Settings:
+{
+	Color offset
+	-0.6510000228881836
+	Color change speed
+	-0.8259999752044678
+	Angle x
+	0.0
+	Angle y
+	0.0
+	Angle z
+	0.0
+	Julia x
+	0.0
+	Julia y
+	0.0
+	Julia z
+	0.0
+	
+	0.0
+	
+	0.0
+	
+	0.0
+	
+	0.0
+	
+	0.0
+	
+	0.0
+	
+	0.0
+	
+	0.0
+	
+	0.0
+	
+	0.0
+	
+	0.0
+	
+	0.0
+}
+{
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+}

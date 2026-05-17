@@ -1,0 +1,140 @@
+SDF:
+{
+	vec2 fractal = de(p);
+	sdf = max(fractal.x,length(p)-SET[6]);
+	sdf = max(sdf, abs(p.y) - 1.);
+
+	float Orbit_Trap = fractal.y*(1.+SET[1]) + SET[0];
+
+	vec3 HSV = vec3( Orbit_Trap ,0.5 ,1.);
+
+	//Material Settings:
+	material.rgb = Hsv2rgb(HSV);
+	material.roughness = 1.0;
+	material.specular = 0.0;
+	material.translucency = 0.0;
+	material.ior = 1.5;
+	material.emission = 0.0;
+
+
+
+
+
+
+
+
+}
+Helper Functions:
+{
+	vec2 de( vec3 p0 ){
+		vec4 p = vec4(p0, 1.);
+		float sdf = 0.0;
+		float orbit_trap = 0.0;
+		for(int i = 0; i < 10; i++){
+			float a = SET[2] * 2. + 2.;
+			float b = SET[3] * 2. + 2.680;
+			float c = SET[4] * 2. + 2.;
+			p.x = mod(p.x -a/2., a) -a/2.;
+			p.y = mod(p.y -b/2., b) -b/2.;
+			p.z = mod(p.z -c/2., c) -c/2.;
+			p*=(1.4+SET[5])/dot(p.xyz,p.xyz);
+			sdf = abs(p.y/p.w)*0.25;
+			orbit_trap += sdf;
+		}
+	    return vec2 (abs(p.y/p.w)*0.25 * 0.7,orbit_trap*2.);
+	}
+
+
+
+
+
+
+
+
+
+}
+SDF Settings:
+{
+	Color offset
+	-1.3990000486373901
+	Color change speed
+	0.029999999329447746
+	Offset x
+	0.0
+	Offset Y
+	0.0
+	Offset Z
+	0.0
+	Scale
+	0.0
+	Limit
+	10.0
+	
+	0.0
+	
+	0.0
+	
+	0.0
+	
+	0.0
+	
+	0.0
+	
+	0.0
+	
+	0.0
+	
+	0.0
+	
+	0.0
+	
+	0.0
+	
+	0.0
+	
+	0.0
+	
+	0.0
+}
+{
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+}

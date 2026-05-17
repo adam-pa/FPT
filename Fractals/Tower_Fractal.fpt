@@ -1,0 +1,137 @@
+SDF:
+{
+	vec2 fractal = de(p);
+	sdf = fractal.x;
+
+	float Orbit_Trap = fractal.y*(1.+SET[1]) + 0.3 + SET[0];
+
+	vec3 HSV = vec3( Orbit_Trap ,0.5 ,1.);
+
+	//Material Settings:
+	material.rgb = Hsv2rgb(HSV);
+	material.roughness = 1.0;
+	material.specular = 0.0;
+	material.translucency = 0.0;
+	material.ior = 1.5;
+	material.emission = 0.0;
+
+
+
+
+
+
+}
+Helper Functions:
+{
+	//made by: gaziya5
+
+	vec2 de(vec3 p){
+		float sdf = 0.0;
+		float col = 0.0;
+		vec3 p0 = p;
+
+	    p=mod(p,2.)-1.;
+	    p=abs(p)-1.;
+	    if(p.x < p.z)p.xz=p.zx;
+	    if(p.y < p.z)p.yz=p.zy;
+	    if(p.x < p.y)p.xy=p.yx;
+	    float s=1.;
+	    for(int i=0;i<10;i++){
+	    	float r2=2./clamp(dot(p,p),.1,1.);
+	        p=abs(p)*r2-vec3(.6* (SET[5]*2.+1.),.6 * (SET[4]*2.+1.),3.5 * (SET[3]*2.+1.) );
+	        s*=r2;
+			sdf = length(p)/s;
+			col += sdf;
+	    }
+	    return vec2(max(sdf,length(p0) - SET[2]), col);
+	  }
+
+
+
+
+}
+SDF Settings:
+{
+	Color offset
+	-0.032999999821186066
+	Color change speed
+	-0.5730000138282776
+	Limit
+	5.0
+	Offset 1
+	0.0
+	Offset 2
+	0.0
+	Offset 3
+	0.0
+	
+	0.0
+	
+	0.0
+	
+	0.0
+	
+	0.0
+	
+	0.0
+	
+	0.0
+	
+	0.0
+	
+	0.0
+	
+	0.0
+	
+	0.0
+	
+	0.0
+	
+	0.0
+	
+	0.0
+	
+	0.0
+}
+{
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+}

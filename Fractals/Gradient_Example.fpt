@@ -1,0 +1,145 @@
+SDF:
+{
+	vec2 fractal = de(p);
+	sdf = fractal.x;
+
+	float Orbit_Trap = fractal.y*(1.+SET[1])/5. + 0.3 + SET[0];
+
+	//Material Settings:
+	material.rgb = Gradient(Orbit_Trap);
+	material.roughness = 1.0;
+	material.specular = 0.0;
+	material.translucency = 0.0;
+	material.ior = 1.5;
+	material.emission = 0.0;
+
+
+
+
+
+
+}
+Helper Functions:
+{
+	// made by: michael0884
+	vec2 de( vec3 p) {
+	    float orbittrap = 0.0;
+	    float sdf = 0.0;
+	    float scale = 1.9 ;
+	    float angle1 = -9.83 + SET[2]/2. ;
+	    float angle2 = -1.16 + SET[3]/2.;
+	    vec3 shift = vec3( -3.508, -3.593, 3.295 );
+		shift += vec3(SET[4],SET[5],SET[6]) * 7.;
+
+	    vec2 a1 = vec2(sin(angle1), cos(angle1));
+	    vec2 a2 = vec2(sin(angle2), cos(angle2));
+	    mat2 rmZ = mat2(a1.y, a1.x, -a1.x, a1.y);
+	    mat2 rmX = mat2(a2.y, a2.x, -a2.x, a2.y);
+	    float s = 1.0;
+	    for (int i = 0; i <20; ++i){
+	    	p.xyz = abs(p.xyz);
+	    	p.xy *= rmZ;
+	    	p.xy += min( p.x - p.y, 0.0 ) * vec2( -1., 1. );
+	   	 p.xz += min( p.x - p.z, 0.0 ) * vec2( -1., 1. );
+	    	p.yz += min( p.y - p.z, 0.0 ) * vec2( -1., 1. );
+	    	p.yz *= rmX;
+	   	 p *= scale;
+	    	s *= scale;
+	   	 p.xyz += shift;
+			vec3 d = abs( p ) - vec3( 6.0f );
+	   	 sdf = ( min( max( d.x, max( d.y, d.z ) ), 0.0 ) + length( max( d, 0.0 ) ) ) / s;
+	   	 orbittrap += sdf;
+	  }
+	  return vec2(sdf, orbittrap);
+	}
+
+
+
+
+
+}
+SDF Settings:
+{
+	Color offset
+	-0.2759999930858612
+	Color change speed
+	0.6740000247955322
+	Angle 1
+	0.0
+	Angle 2
+	0.0
+	Shift x
+	0.0
+	Shift y
+	0.0
+	Shift z
+	0.0
+	
+	0.0
+	
+	0.0
+	
+	0.0
+	
+	0.0
+	
+	0.0
+	
+	0.0
+	
+	0.0
+	
+	0.0
+	
+	0.0
+	
+	0.0
+	
+	0.0
+	
+	0.0
+	
+	0.0
+}
+{
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+	
+	[0.0, 0.0, 0.0]
+}

@@ -1,12 +1,6 @@
 //Shader.glsl
-
-vec3 cam_pos = vec3(0.0,0.0,-5);
-int ni = 212;
-float lod_falloff = 1000.;
 const float pi = 3.14159265359;
 const float inf = 1e20;
-
-
 
 //structs--------------------------------------------------------structs
 struct Material {
@@ -35,10 +29,60 @@ Material defaultMaterial() {
     m.emission = 0.0;
     return m;
 }
+ 
+
+//USER function------------------------------------------------------USER function
+
+float Smin( float a, float b, float k ){
+    float h = clamp( 0.5+0.5*(b-a)/k, 0.0, 1.0 );
+    return mix( b, a, h ) - k*h*(1.0-h);
+}
+
+vec3 Hsv2rgb(vec3 c){
+    vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
+    vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
+    return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+}
+
+vec3 Gradient(float orbit_trap){
+    float c = fract(orbit_trap);
+
+    float pos_1 = floor(c*float(Gradient_number_of_colors));
+    float pos_2 = ceil(c*float(Gradient_number_of_colors));
+	pos_1 = mod(pos_1,Gradient_number_of_colors);
+	pos_2 = mod(pos_2,Gradient_number_of_colors);
+
+    vec3 a = Gradient_colors[int(pos_1)];
+    vec3 b = Gradient_colors[int(pos_2)];
+
+    float wa = Gradient_color_weights[int(pos_1)];
+    float wb = Gradient_color_weights[int(pos_2)];
+
+    float k = fract(float(Gradient_number_of_colors) * c);
+
+    vec3 final_col = ( a*wa*(1.-k) + b*wb*k ) / ( wa*(1.-k) + wb*k );
+
+	vec3 dummy = vec3(0.0);
+	for (int i = 0; i < Gradient_number_of_colors; i++){
+		dummy *= Gradient_colors[i] * Gradient_color_weights[i]; 
+	}
+
+    return final_col + dummy*0.;
+}  
+
+// --------------- USER SDF --------------
+struct SDFResult { 
+    float distance;
+    Material material;
+};
+
+{{USER_HELPERS}}
+{{USER_SDF}}
+// ----------------------------------------
+
 
 //Random----------------------------------------------------------------------------------------------------------Random
-float hash11(float p)
-{
+float hash11(float p){
     p = fract(p * .1031);
     p *= p + 33.33;
     p *= p + p;
@@ -46,20 +90,23 @@ float hash11(float p)
 }
 
 float HoskinsRand(vec3 p) {
+	p.x = hash11(p.x);
+	p.y = hash11(p.y);
+	p.z = hash11(p.z);
     uint x = floatBitsToUint(p.x);
     uint y = floatBitsToUint(p.y);
     uint z = floatBitsToUint(p.z);
-    uint n = x * 1664525u + y * 1013904223u + z * 374761393u;
+    uint n = x * 1664525u + y * 1013904223u + z * 374761393u; 
     n ^= (n >> 13u);
     n *= 1274126177u;
     n ^= (n >> 16u);
     return float(n) * (1.0 / 4294967296.0);
 }
 
-vec3 Random_Vector(vec3 normal,vec2 xy, float seed){
+vec3 Random_Vector(vec3 normal, vec2 xy, float frameIndex){
  
-    float h1 = HoskinsRand(vec3(xy, seed * 2.0 + 0.0));
-	float h2 = HoskinsRand(vec3(xy, seed * 2.0 + 1.0));
+    float h1 = HoskinsRand(vec3(xy, frameIndex * 2.0 + 0.0));
+	float h2 = HoskinsRand(vec3(xy, frameIndex * 2.0 + 1.0));
 
     vec3 n = normalize(normal);
 
@@ -84,13 +131,6 @@ vec3 Random_point(float power, vec2 xy, float seed){
 
 //functions----------------------------------------------------------------------------------------------------functions
 
-vec3 Hsv2rgb(vec3 c)
-{
-    vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
-    vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
-    return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
-}
-
 vec3 Rotate(vec3 v, vec2 cam_yp){
     float yaw = cam_yp.x;
     float pitch = cam_yp.y;
@@ -99,12 +139,6 @@ vec3 Rotate(vec3 v, vec2 cam_yp){
     v = vec3(v.x*cos(yaw) + v.z*sin(yaw), v.y, -v.x*sin(yaw) + v.z*cos(yaw) );
     return v;
 }
-
-float Smin( float a, float b, float k ){
-    float h = clamp( 0.5+0.5*(b-a)/k, 0.0, 1.0 );
-    return mix( b, a, h ) - k*h*(1.0-h);
-}
-
 
 vec3 Studio(vec3 dr,vec3 li, float light_size){
     float ligth = max( (dot(dr, li) - 1.)/(1. - cos(light_size)) + 1., 0.0) / light_size * 3.;
@@ -167,22 +201,13 @@ vec3 Environment(vec3 viewDir){
     if (World_settings[0] == 1.){env = Sky(viewDir, ligth_dir); };
     if (World_settings[0] == 2.){env = sample_HDRI(hdri_dir); };
 	
-	//Contrast
-	return (max(env * World_settings[4], 0.0) - vec3(0.5) * World_settings[5] + vec3(0.5));
+	vec3 final_env = (max(env * World_settings[4], 0.0) - vec3(0.5) * World_settings[5] + vec3(0.5));
+	final_env = max(final_env,0.0);
+	return final_env;
 }
 
 
 //object function------------------------------------------------------object function
-struct SDFResult { 
-    float distance;
-    Material material;
-};
-
-// --------------- USER SDF --------------
-{{USER_HELPERS}}
-{{USER_SDF}}
-// ---------------------------------------
-
 float Object(vec3 p){
     float dis = UserSDF(p).distance;
     return dis;
@@ -190,14 +215,17 @@ float Object(vec3 p){
 
 
 //Ray marching----------------------------------------------------------------------------------------------Ray marching
-vec3 Ray(vec3 dr, vec3 rp, int ni, float min_dist){
+vec3 Ray(vec3 dr, vec3 rp, int ni, float min_dist, float lod_falloff){
     
     vec3 cam_pos = rp;
     for (int i = 0; i < ni; i++){
         float o = abs(Object(rp)) * 0.99;
         rp += dr * o;
-        float fog_lod = dot(cam_pos - rp, cam_pos - rp);
-        float lod = mix(0.1, min_dist, lod_falloff/(fog_lod + lod_falloff));
+
+        float fog_lod = dot(cam_pos - rp,cam_pos - rp);
+        float lod = mix(min_dist,0.1, fog_lod/lod_falloff);
+		lod = mix(0.0001, lod, Render_settings[5]);
+
         if (UserSDF(rp).material.translucency > 0.0){lod = 0.0001;}
         if (o < lod) break;
 		if (Render_settings[4] < o) break;
@@ -205,7 +233,6 @@ vec3 Ray(vec3 dr, vec3 rp, int ni, float min_dist){
     }
     return rp;
 }
-
 
 
 //Normal calculation
@@ -298,9 +325,7 @@ BRDFResult BRDF(
             dr = refracted;
             side *= -1;
             color *= (1.0 - fresnel);
-        }
-                
-
+        }       
     }
     rp += n * 0.001 * sign(dot(dr, n));
 
@@ -315,30 +340,34 @@ BRDFResult BRDF(
 
 
 //light simulation------------------------------------------------------light simulation
-vec3 Render(vec2 xy, vec3 rp,vec2 cam_yp, float frame){
+vec3 Render(vec2 xy){
+
+	//camera veriables
+	float frame = float(Frame);
+	vec3 rp = Cam_Pos;
+	vec2 cam_yp = Cam_yp; 
     float focal_length = 1/tan(Camera_settings[0]/2. * pi/180. );
+    float cam_d = length(Ray(Rotate(normalize(vec3(Focus_pos, focal_length)), cam_yp), rp, 50, 0.001, 1000.) - rp);
 
-    float cam_d = length(Ray(Rotate(normalize(vec3(iFocus_pos, focal_length)), cam_yp), rp, 50, 0.001) - rp);
-
-    vec3 dr = normalize(vec3(xy + Random_point(0.0002, xy, frame).xy, focal_length));
+	//camera 
+	float aa_strength = .4/(min(Resolution.x,Resolution.y));
+    vec3 dr = normalize(vec3(xy + Random_point(aa_strength, xy, frame).xy, focal_length));
     dr = Rotate(dr, cam_yp);
     vec3 fp = rp + dr * cam_d; 
     rp += Rotate( Random_point( Camera_settings[1] , xy, frame ), cam_yp );
     dr = normalize(fp - rp);
 
-    vec3 cam_pos = rp;
-    
-    vec3 pixellight = vec3(0.0);
-    vec3 pixelcolor = vec3(1.0);
-
-	int local_ni = ni;
+	int local_ni = int(Render_settings[1]);
     float side = 1;
-    
+    vec3 cam_pos = rp;
+
+    vec3 pixellight = vec3(0.0);
+    vec3 pixelcolor = vec3(1.0);    
     
     for (int i = 0; i < Render_settings[0]; i++){
-        rp = Ray(dr, rp, local_ni, Render_settings[3]);
+        rp = Ray(dr, rp, local_ni, Render_settings[3], 5000.);
 		//Optimization
-		local_ni = int(float(ni)/(Render_settings[5]*2. + 1.));
+		local_ni = int(Render_settings[1]/(Render_settings[5]*2. + 1.));
 
         Material material = UserSDF(rp).material;
 
@@ -347,10 +376,11 @@ vec3 Render(vec2 xy, vec3 rp,vec2 cam_yp, float frame){
             pixellight += Environment(dr);
             break;}
 
-        if (material.emission > 0.01){
+        if (material.emission > 0.001){
             pixellight += material.rgb * material.emission;
             break;}
    
+		//BRDF--------------BRDF
         BRDFResult brdf = BRDF(dr, rp, side, frame, i, xy);
         rp = brdf.rp;
         dr = brdf.dr;
@@ -361,12 +391,15 @@ vec3 Render(vec2 xy, vec3 rp,vec2 cam_yp, float frame){
 }
 
 //Viewport--------------------------------------------------------------------------Viewport
-vec3 Viewport(vec2 xy, vec3 rp,vec2 cam_yp){
-    float f = 1/tan(Camera_settings[0]/2. * pi/180. );
+vec3 Viewport(vec2 xy){
+	vec3 rp = Cam_Pos;
+	vec2 cam_yp = Cam_yp; 
+
+    float f = 1./tan(Camera_settings[0]/2. * pi/180. );
 
     vec3 dr = Rotate( normalize(vec3(xy, f)), cam_yp );
     vec3 cam_pos = rp;
-    rp = Ray(dr, rp, ni, Render_settings[3]);
+    rp = Ray(dr, rp, 212, 0.001, 1000.);
     vec3 n = Normal(rp); 
     vec3 li = normalize(vec3(1.0,0.3,0.0));
 
@@ -383,30 +416,34 @@ vec3 Viewport(vec2 xy, vec3 rp,vec2 cam_yp){
 void mainImage(out vec4 fragColor, in vec2 fragCoord)
 {
 
-    vec2 suv = fragCoord / iResolution.xy;
+	float fdummy = 0.0;
+	for (int i = 0; i < SET.length(); i++){
+		fdummy *= SET[i]; 
+	}
+	vec3 vdummy = vec3(0.0);
+	for (int i = 0; i < VSET.length(); i++){
+		vdummy *= VSET[i]; 
+	}
+
+
+    vec2 suv = fragCoord / Resolution.xy;
     vec2 uv = suv - 0.5;
-    uv.x *= iResolution.x / iResolution.y;
+    uv.x *= Resolution.x / Resolution.y;
 
-
-	//Render setings
-    if (iMode == 1) {
-        ni = int(Render_settings[1]);
-        lod_falloff = 5000.0;
-    }
 
 	//acumulation
     vec3 accum;
-    if (iMode == 1) {
-        vec3 col = Render(uv, iCam_Pos, iCam_yp, float(iFrame));
+    if (Mode == 1) {
+        vec3 col = Render(uv);
 
-        if (iFrame == 0) {
+        if (Frame == 0) {
             accum = col;
         } else {
-            float a = 1.0 / float(iFrame + 1);
-            accum = mix(texture(iPrevFrame, suv).rgb, col, a);
+            float a = 1.0 / float(Frame + 1);
+            accum = mix(texture(PrevFrame, suv).rgb, col, a);
         }
-        fragColor = vec4(accum, 1.0);
+        fragColor = vec4(accum + (vdummy*fdummy*0.), 1.0);
 
-    }else{fragColor = vec4(Viewport(uv, iCam_Pos, iCam_yp),1.0);}
+    }else{fragColor = vec4(Viewport(uv) + (vdummy*fdummy*0.) ,1.0);}
      
 }
