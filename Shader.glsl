@@ -224,7 +224,7 @@ vec3 Ray(vec3 dr, vec3 rp, int ni, float min_dist, float lod_falloff){
 
         float fog_lod = dot(cam_pos - rp,cam_pos - rp);
         float lod = mix(min_dist,0.1, fog_lod/lod_falloff);
-		lod = mix(0.0001, lod, Render_settings[5]);
+		lod = mix(Render_settings[3], lod, Render_settings[5]);
 
         if (UserSDF(rp).material.translucency > 0.0){lod = 0.0001;}
         if (o < lod) break;
